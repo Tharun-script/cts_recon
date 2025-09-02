@@ -15,8 +15,6 @@ init(autoreset=True)
 
 API_KEY = "2b19c67a0c195af60bec0829621249eb402eb18bc56464d6b641c780ef01af2c"
 
-
-
 # -------------------
 # Helpers
 # -------------------
@@ -27,7 +25,6 @@ def run_cmd(cmd):
     except Exception:
         return []
 
-
 def get_dns_records(domain, retries=3):
     for _ in range(retries):
         ips = run_cmd(["dig", "+short", domain, "A"])
@@ -36,7 +33,6 @@ def get_dns_records(domain, retries=3):
         time.sleep(1)
     return []
 
-
 def get_whois_info(ip):
     try:
         result = subprocess.run(["whois", ip], capture_output=True, text=True, check=True)
@@ -44,7 +40,6 @@ def get_whois_info(ip):
                 if re.search(r"(NetRange|CIDR|route)", line, re.IGNORECASE)]
     except Exception:
         return []
-
 
 def extract_bucket_and_key(url):
     parsed = urlparse(url)
@@ -56,7 +51,6 @@ def extract_bucket_and_key(url):
         bucket = host.split(".s3.")[0]
     return bucket, path or None
 
-
 def check_object_read(bucket, key):
     s3 = boto3.client("s3", aws_access_key_id="", aws_secret_access_key="")
     try:
@@ -64,7 +58,6 @@ def check_object_read(bucket, key):
         return True
     except (ClientError, EndpointConnectionError):
         return False
-
 
 def check_object_write(bucket, key="test_permission_check.txt"):
     s3 = boto3.client("s3", aws_access_key_id="", aws_secret_access_key="")
@@ -74,7 +67,6 @@ def check_object_write(bucket, key="test_permission_check.txt"):
         return True
     except (ClientError, EndpointConnectionError):
         return False
-
 
 def serpapi_search(query, num=10, retries=3):
     params = {"engine": "google", "q": query, "hl": "en", "num": num, "api_key": API_KEY}
@@ -89,11 +81,11 @@ def serpapi_search(query, num=10, retries=3):
             time.sleep(2)
     return []
 
-
 # -------------------
 # Main process
 # -------------------
-def process(domain, safe_domain):
+def process(domain):
+    safe_domain = domain.replace("/", "_").replace("\\", "_")
     timestamp = datetime.now().isoformat()
     results = {"module": "bucket", "target": domain, "timestamp": timestamp,
                "dns": [], "s3_buckets": []}
@@ -139,4 +131,3 @@ def process(domain, safe_domain):
 
     print(Fore.CYAN + f"[✓] Results saved to {safe_domain}_bucket.json\n")
     return results
-
