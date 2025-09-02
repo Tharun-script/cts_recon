@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import subprocess
 import re
+import os
+import json
 from urllib.parse import urlparse
 from datetime import datetime
 from serpapi import GoogleSearch
@@ -12,6 +14,19 @@ init(autoreset=True)
 
 # === CONFIG ===
 API_KEY = "2b19c67a0c195af60bec0829621249eb402eb18bc56464d6b641c780ef01af2c"
+
+
+# -------------------
+# Utils
+# -------------------
+def save_json(domain, module, scan, data):
+    """Save results into {domain}_{module}_{scan}.json"""
+    safe_domain = domain.replace("http://", "").replace("https://", "").split("/")[0]
+    filename = f"{safe_domain}_{module}_{scan}.json"
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
+    print(Fore.CYAN + f"    [>] Saved report → {filename}")
+
 
 # -------------------
 # DNS + WHOIS
@@ -27,6 +42,7 @@ def get_dns_records(domain):
     except Exception:
         return []
 
+
 def get_whois_info(ip):
     info = []
     try:
@@ -37,6 +53,7 @@ def get_whois_info(ip):
     except Exception as e:
         info.append(f"WHOIS lookup failed: {e}")
     return info
+
 
 # -------------------
 # S3 Helpers
@@ -52,6 +69,7 @@ def extract_bucket_and_key(url):
         bucket = host.split(".s3.")[0]
     return bucket, path if path else None
 
+
 def check_object_read(bucket, key):
     s3 = boto3.client("s3", aws_access_key_id="", aws_secret_access_key="")
     try:
@@ -59,6 +77,7 @@ def check_object_read(bucket, key):
         return True
     except ClientError:
         return False
+
 
 def check_object_write(bucket, key="test_permission_check.txt"):
     s3 = boto3.client("s3", aws_access_key_id="", aws_secret_access_key="")
@@ -68,6 +87,7 @@ def check_object_write(bucket, key="test_permission_check.txt"):
         return True
     except ClientError:
         return False
+
 
 def serpapi_search(query, num=10):
     params = {"engine": "google", "q": query, "hl": "en", "num": num, "api_key": API_KEY}
@@ -79,6 +99,7 @@ def serpapi_search(query, num=10):
         if link:
             urls.append(link)
     return urls
+
 
 # -------------------
 # Main process
@@ -93,19 +114,28 @@ def process(domain):
         "s3_buckets": []
     }
 
-    print(Fore.CYAN + f"    [*] Starting bucket scan for {domain}...")
+    print(Fore.CYAN + f"    [*] Starting scan for {domain}...")
 
     # ---------------- DNS + WHOIS ----------------
     print(Fore.CYAN + f"    [*] Resolving DNS records for {domain}...")
     ips = get_dns_records(domain)
     if ips:
+        dns_report = []
         print(Fore.GREEN + f"    [✓] Found {len(ips)} IP(s):")
         for ip in ips:
             print(Fore.YELLOW + f"       └─ {ip}")
+            dns_report.append(ip)
+        save_json(domain, "dns", "scan", {"ips": dns_report})
+        results["dns"] = dns_report
+
+        # WHOIS per IP
+        whois_report = {}
+        for ip in ips:
             whois_info = get_whois_info(ip)
-            results["dns"].append({"ip": ip, "whois": whois_info})
+            whois_report[ip] = whois_info
             if whois_info:
-                print(Fore.MAGENTA + f"          WHOIS: {', '.join(whois_info[:3])}...")
+                print(Fore.MAGENTA + f"          WHOIS for {ip}: {', '.join(whois_info[:3])}...")
+        save_json(domain, "whois", "scan", whois_report)
     else:
         print(Fore.RED + "    [!] No DNS A records found.")
 
@@ -118,6 +148,7 @@ def process(domain):
     )
     urls = serpapi_search(s3_query)
 
+    bucket_results = []
     if urls:
         print(Fore.GREEN + f"    [✓] Found {len(urls)} possible S3 URLs:")
         for url in urls:
@@ -125,7 +156,7 @@ def process(domain):
             if bucket:
                 read = check_object_read(bucket, key) if key else False
                 write = check_object_write(bucket)
-                results["s3_buckets"].append({
+                bucket_results.append({
                     "url": url,
                     "bucket": bucket,
                     "key": key,
@@ -137,9 +168,11 @@ def process(domain):
                 if key:
                     print(Fore.WHITE + f"          Key: {key}")
                 print(Fore.GREEN + f"          Readable: {read}, Writable: {write}")
+
+        save_json(domain, "bucket", "scan", bucket_results)
     else:
         print(Fore.RED + "    [!] No related S3 buckets found.")
 
-    print(Fore.CYAN + f"    [*] Bucket scan for {domain} completed.\n")
+    print(Fore.CYAN + f"    [*] Scan for {domain} completed.\n")
 
     return results
