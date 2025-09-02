@@ -1,31 +1,48 @@
-import shodan, json
-from colorama import Fore, Style, init
+#!/usr/bin/env python3
+import shodan
+from colorama import Fore, init
 
 init(autoreset=True)
-API_KEY = "A0icrJAHa3I1Gb5Hb0XUJdRqtgQIXUgs"
-api = shodan.Shodan(API_KEY)
+
+SHODAN_API_KEY = "A0icrJAHa3I1Gb5Hb0XUJdRqtgQIXUgs"
+api = shodan.Shodan(SHODAN_API_KEY)
 
 
-def process(domain, reports_dir):
-    print(Fore.YELLOW + f"\n[+] Running Shodan module for {domain}" + Style.RESET_ALL)
-    results = {"module": "shodan", "target": domain, "ips": []}
+def process(domain):
+    """
+    Shodan module for pipeline.py
+    Returns JSON-ready dict (pipeline will save report).
+    """
     try:
-        data = api.search(domain)
-        for idx, r in enumerate(data.get("matches", []), 1):
-            services = [{"port": r.get("port"), "banner": r.get("data"), "cves": list(r.get("vulns", {}).keys()) if r.get("vulns") else []}]
-            ip_entry = {
-                "ip": r.get("ip_str"),
-                "org": r.get("org"),
-                "ports": [r.get("port")],
-                "location": r.get("location"),
-                "services": services
+        print(Fore.YELLOW + f"[*] Searching Shodan for {domain}...")
+        results = api.search(domain)
+        shodan_data = []
+
+        for idx, result in enumerate(results.get("matches", []), 1):
+            ip = result.get("ip_str")
+            hostnames = result.get("hostnames", [])
+            vulns = list(result.get("vulns", {}).keys()) if "vulns" in result else []
+
+            entry = {
+                "ip": ip,
+                "port": result.get("port", "N/A"),
+                "org": result.get("org", "N/A"),
+                "hostnames": hostnames,
+                "location": result.get("location", {}),
+                "vulnerabilities": vulns
             }
-            results["ips"].append(ip_entry)
-            status = f"{Fore.GREEN}[✓]" if services[0]["cves"] else "[*]"
-            print(Fore.CYAN + f"{status} {r.get('ip_str')}:{r.get('port')} | {r.get('org')} | CVEs: {len(services[0]['cves'])}")
+            shodan_data.append(entry)
+
+            # CLI status output (human-readable, colorful)
+            print(Fore.GREEN + f"[{idx}] IP: {ip}, Port: {entry['port']}, "
+                  f"Org: {entry['org']}, Vulns: {', '.join(vulns) if vulns else 'None'}")
+
+        print(Fore.CYAN + f"[✓] Shodan scan completed for {domain} "
+                          f"({len(shodan_data)} results)")
+
+        # Return only JSON data (pipeline saves to {target}_report/shodan.json)
+        return {"shodan_results": shodan_data}
+
     except shodan.APIError as e:
         print(Fore.RED + f"[!] Shodan API Error: {e}")
-    path = f"{reports_dir}/shodan.json"
-    with open(path, "w") as f:
-        json.dump(results, f, indent=2)
-    print(Fore.GREEN + f"[✓] shodan results saved → {path}" + Style.RESET_ALL)
+        return {"shodan_results": []}
