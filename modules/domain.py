@@ -2,154 +2,117 @@
 import subprocess
 import os
 import json
+import tempfile
 from datetime import datetime
-from colorama import Fore, init
+from colorama import Fore, Style, init
+import builtwith
 
-# Initialize colorama
 init(autoreset=True)
 
-# Import report module if exists
-try:
-    from reconn import report
-except ImportError:
-    report = None
 
-# -------------------
-# Helper functions
-# -------------------
-def run_command(command, description):
-    """Run a shell command and return stdout lines"""
-    print(Fore.YELLOW + f"[+] {description}")
+# =====================
+# Helper: Run commands
+# =====================
+def run_command_show_output(command, description):
+    print(f"\n{Fore.BLUE}[+] {description}{Style.RESET_ALL}")
+    results = []
     try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(Fore.RED + f"[!] Command failed: {result.stderr.strip()}")
-            return []
-        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    except Exception as e:
-        print(Fore.RED + f"[!] Exception: {e}")
-        return []
-
-def save_json(data, file_path):
-    """Save dictionary as JSON"""
-    try:
-        with open(file_path, "w") as f:
-            json.dump(data, f, indent=4)
-        print(Fore.MAGENTA + f"[+] Results saved to {file_path}")
-    except Exception as e:
-        print(Fore.RED + f"[!] Failed to save JSON: {e}")
-
-def check_alive(out_dir):
-    """Check alive subdomains with httpx"""
-    alive_file = os.path.join(out_dir, "subdomains_alive.txt")
-    print(Fore.YELLOW + "[+] Checking alive subdomains with httpx...")
-    try:
-        command = f"httpx-toolkit -l {out_dir}/subdomains_all.txt -silent -timeout 10 -o {alive_file}"
-        subprocess.run(command, shell=True, check=True)
-        alive_subs = []
-        if os.path.exists(alive_file):
-            with open(alive_file) as f:
-                alive_subs = [line.strip() for line in f if line.strip()]
-        print(Fore.CYAN + f"[✓] Found {len(alive_subs)} alive subdomains")
-        for sub in alive_subs:
-            print(Fore.GREEN + f"- {sub}")
-        return alive_subs
-    except Exception as e:
-        print(Fore.RED + f"[!] httpx error: {e}")
-        return []
-
-def run_wappy(targets):
-    """
-    Runs Wappy only on alive subdomains
-    Returns structured dict: { "domain": ["Tech1", "Tech2", ...], ... }
-    """
-    print(Fore.YELLOW + "[+] Running Wappy scans on alive subdomains...")
-    wappy_results = {}
-
-    # Include venv bin path if necessary
-    env = os.environ.copy()
-    venv_bin = os.path.join(os.path.dirname(os.path.dirname(os.__file__)), "bin")
-    env["PATH"] = venv_bin + os.pathsep + env.get("PATH", "")
-
-    for target in targets:
-        print(Fore.CYAN + f"    - Scanning {target} ...")
-        try:
-            result = subprocess.run(
-                ["wappy", target],
-                capture_output=True,
-                text=True,
-                env=env
-            )
-
-            output_lines = result.stdout.splitlines() if result.returncode == 0 else []
-            techs = []
-
-            for line in output_lines:
+        with subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as proc:
+            for line in proc.stdout:
                 line = line.strip()
-                # Skip domain headers
-                if not line or line.startswith(target):
-                    continue
-                techs.append(line)
+                if line:
+                    print(Fore.GREEN + "    " + line + Style.RESET_ALL)
+                    results.append(line)
+            proc.wait()
+            # ignore errors to avoid spamming
+    except Exception as e:
+        print(f"{Fore.RED}[!] Exception occurred: {e}{Style.RESET_ALL}")
+    return results
 
-            wappy_results[target] = techs
 
-        except Exception as e:
-            wappy_results[target] = [f"Error: {e}"]
+# =====================
+# Subdomain Enumeration (subfinder + crt.sh)
+# =====================
+def get_subdomains(domain):
+    subdomains = set()
 
-    print(Fore.GREEN + "[✓] Wappy scans completed")
-    return wappy_results
+    # Run subfinder
+    try:
+        result = subprocess.run(
+            f"subfinder -d {domain} -all -recursive -silent",
+            shell=True, capture_output=True, text=True, timeout=60
+        )
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line:
+                subdomains.add(line)
+    except Exception:
+        pass  # skip silently
 
-# -------------------
+    # Run crt.sh
+    try:
+        result = subprocess.run(
+            f"""curl -s "https://crt.sh/?q=%25.{domain}&output=json" | jq -r '.[].name_value' | sed 's/\\*\\.//g' | sort -u""",
+            shell=True, capture_output=True, text=True, timeout=60
+        )
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line:
+                subdomains.add(line)
+    except Exception:
+        pass  # skip silently
+
+    return sorted(subdomains)
+
+
+
+# =====================
 # Main process
-# -------------------
+# =====================
 def process(domain):
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    out_dir = f"recon-{domain}-{timestamp}"
-    os.makedirs(out_dir, exist_ok=True)
-    print(Fore.MAGENTA + f"\nOutput directory: {out_dir}\n")
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    results = {"domain": domain, "timestamp": timestamp}
 
-    # -------------------
-    # Subdomain enumeration
-    # -------------------
-    subfinder_subs = run_command(f"subfinder -d {domain} -all -silent", "Running Subfinder...")
-    sublister_subs = run_command(f"sublist3r -d {domain}", "Running Sublist3r...")
-    crtsh_subs = run_command(
-        f"""curl -s "https://crt.sh/?q={domain}&output=json" | jq -r '.[].name_value'""",
-        "Fetching subdomains from crt.sh..."
+    # 1. Subdomains (subfinder + crt.sh merged)
+    all_subdomains = get_subdomains(domain)
+    results["unique_subdomains"] = all_subdomains
+    print(f"{Fore.MAGENTA}[✓] Found {len(all_subdomains)} unique subdomains from Subfinder + crt.sh{Style.RESET_ALL}")
+
+    # Save subdomains temporarily for httpx
+    subdomains_file = tempfile.NamedTemporaryFile(delete=False, mode="w")
+    subdomains_file.write("\n".join(all_subdomains))
+    subdomains_file.close()
+
+    # 2. Alive subdomains
+    alive = run_command_show_output(
+        f"httpx-toolkit -l {subdomains_file.name} -ports 80,443,8080,8000,8443,8081,5000,9000 -threads 200 -silent",
+        "Probing live subdomains with httpx..."
     )
+    results["alive_subdomains"] = alive
+    print(f"{Fore.MAGENTA}[✓] Found {len(alive)} alive subdomains{Style.RESET_ALL}")
 
-    # Merge all unique
-    all_subdomains = sorted(list(set(subfinder_subs + sublister_subs + crtsh_subs)))
-    with open(os.path.join(out_dir, "subdomains_all.txt"), "w") as f:
-        for sub in all_subdomains:
-            f.write(sub + "\n")
-    print(Fore.CYAN + f"[✓] Total {len(all_subdomains)} unique subdomains collected")
+    # 3. Technology scans (main + alive)
+    tech_results = run_tech_scans(alive, include_main=f"http://{domain}")
+    results["technology"] = tech_results
 
-    # -------------------
-    # Alive check
-    # -------------------
-    alive_subs = check_alive(out_dir)
+    return results
 
-    # -------------------
-    # Wappy scan on alive subdomains
-    # -------------------
-    wappy_results = run_wappy(alive_subs)
 
-    # -------------------
-    # Final JSON report
-    # -------------------
-    results = {
-        "domain": domain,
-        "subdomains_all": all_subdomains,
-        "subdomains_alive": alive_subs,
-        "wappy_results": wappy_results
-    }
+# =====================
+# CLI Entry
+# =====================
+if __name__ == "__main__":
+    domain = input(Fore.YELLOW + "Enter the target domain (e.g. cognizant.com): " + Style.RESET_ALL).strip()
+    output = process(domain)
 
-    json_file = os.path.join(out_dir, f"{domain}_subdomain_report.json")
-    save_json(results, json_file)
+    # Save in pipeline-style location
+    safe_domain = domain.replace("/", "_").replace("\\", "_")
+    project_root = os.path.abspath(os.path.dirname(__file__))
+    report_dir = os.path.join(project_root, f"{safe_domain}reports")
+    os.makedirs(report_dir, exist_ok=True)
 
-    if report:
-        report.save_report("subdomain", results)
+    out_file = os.path.join(report_dir, "subdomain_module.json")
+    with open(out_file, "w") as f:
+        json.dump(output, f, indent=4)
 
-    print(Fore.MAGENTA + f"\n✅ Subdomain module scan completed for {domain}")
-    return f"Success"
+    print(f"\n✅ {Fore.GREEN}Module finished! Report saved in {out_file}{Style.RESET_ALL}")
