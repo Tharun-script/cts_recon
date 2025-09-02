@@ -4,6 +4,7 @@ import re
 import time
 import requests
 import json
+import os
 from serpapi.google_search import GoogleSearch
 from colorama import Fore, Style, init
 
@@ -19,16 +20,8 @@ TOKENS = [
 ]
 token_index = 0
 
-API_KEY = "882df33509cf14b58f1c79fdfda125f75b67795d7a49fabdd9dfcda4a32ac203"  # SerpAPI key
+API_KEY = "882df33509cf14b58f1c79fdfda125f75b67795d7a49fabdd9dfcda4a32ac203"
 EMAIL_REGEX = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-
-# ==============================
-# Optional report module
-# ==============================
-try:
-    from reconn import report
-except ImportError:
-    report = None
 
 # ==============================
 # GitHub Helpers
@@ -65,6 +58,7 @@ def github_search(query, page=1, per_page=20):
         elif response.status_code == 403:  # rate limit
             token_index = (token_index + 1) % len(TOKENS)
             if token_index == 0:
+                print(Fore.YELLOW + "[!] Rate limit reached. Waiting 60s...")
                 time.sleep(60)
         else:
             return None
@@ -88,16 +82,15 @@ def extract_patterns(content, domain=None):
 # ==============================
 def run_theharvester(domain):
     try:
+        print(Fore.CYAN + "[*] Running TheHarvester...")
         cmd = ["theHarvester", "-d", domain, "-b", "all"]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         output = result.stdout + result.stderr
         emails = re.findall(rf"[a-zA-Z0-9._%+-]+@{re.escape(domain)}", output)
         return set(emails)
-    except subprocess.TimeoutExpired as e:
-        print(Fore.YELLOW + "[!] TheHarvester timed out after 120s. Showing partial results...")
-        output = e.stdout.decode() if e.stdout else ""
-        emails = re.findall(rf"[a-zA-Z0-9._%+-]+@{re.escape(domain)}", output)
-        return set(emails)
+    except subprocess.TimeoutExpired:
+        print(Fore.YELLOW + "[!] TheHarvester timed out after 120s.")
+        return set()
     except Exception as e:
         print(Fore.RED + f"[!] TheHarvester error: {e}")
         return set()
@@ -138,25 +131,26 @@ def extract_emails_from_url(url, target_domain):
 # ==============================
 # Pipeline Entry Point
 # ==============================
-def process(domain, output_file=None):
-    """Pipeline entry function"""
+def process(domain):
     keyword = domain.split(".")[0]
     all_emails = set()
     found_secrets = []
 
-    print(Fore.YELLOW + f"[*] Running scraping module for {domain}")
+    print(Fore.YELLOW + f"[*] Starting scraping for {domain}")
 
     # 1. TheHarvester
     harvester_emails = run_theharvester(domain)
     all_emails.update(harvester_emails)
 
     # 2. Pastebin
+    print(Fore.CYAN + "[*] Searching Pastebin via Google...")
     pastebin_urls = serpapi_search(f'site:pastebin.com "{domain}"', num=15)
     for url in pastebin_urls:
         emails = extract_emails_from_url(url, domain)
         all_emails.update(emails)
 
     # 3. GitHub dorks
+    print(Fore.CYAN + "[*] Running GitHub dorks...")
     for dork in DORKS:
         query = dork.format(keyword=keyword, domain=domain)
         page = 1
@@ -199,38 +193,34 @@ def process(domain, output_file=None):
         "secrets": found_secrets
     }
 
-    # Show results to user immediately
+    # Show results to user
     print("\n=== Final Results ===\n")
     print(Fore.GREEN + f"[+] Found {len(output['emails'])} unique emails")
     for email in output["emails"]:
-        print(email)
+        print(Fore.WHITE + f"   └─ {email}")
 
     if output["secrets"]:
         print(Fore.GREEN + f"\n[+] Found {len(output['secrets'])} secrets/tokens")
         for s in output["secrets"]:
-            print(f"[{s['type']}] {s['value']}  -->  {s['source_url']}")
+            print(Fore.YELLOW + f"   └─ [{s['type']}] {s['value']}  -->  {s['source_url']}")
 
-    # Save JSON
-    if not output_file:
-        output_file = f"scraping_{domain}.json"
+    # Save JSON directly inside {domain}/scraping.json
+    os.makedirs(domain, exist_ok=True)
+    output_file = os.path.join(domain, "scraping.json")
+
+    if os.path.exists(output_file):
+        with open(output_file, "r") as f:
+            try:
+                existing = json.load(f)
+            except:
+                existing = []
+    else:
+        existing = []
+
+    existing.append(output)
     with open(output_file, "w") as f:
-        json.dump(output, f, indent=4)
+        json.dump(existing, f, indent=4)
 
-    print(Fore.CYAN + f"\n[+] Scraping result2s saved to {output_file}")
+    print(Fore.CYAN + f"\n[+] Scraping results saved to {output_file}")
 
-    # Forward to report.py if available
-    if report:
-        try:
-            report.save_report("scraping", output)
-            print(Fore.CYAN + "[+] Scraping results forwarded to report.py")
-        except Exception as e:
-            print(Fore.RED + f"[!] Error saving report: {e}")
-
-    return Fore.GREEN + f"Success"
-
-# ==============================
-# Standalone Execution (optional)
-# ==============================
-if __name__ == "__main__":
-    domain_input = input(Fore.CYAN + "Enter target domain (e.g., example.com): " + Style.RESET_ALL).strip()
-    process(domain_input)
+    return output
