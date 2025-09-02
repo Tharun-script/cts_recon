@@ -1,33 +1,39 @@
 #!/usr/bin/env python3
+"""
+Scraping Module
+---------------
+Finds emails and secrets from:
+ - TheHarvester
+ - Pastebin (via SerpAPI)
+ - GitHub dorks
+
+Output JSON schema:
+{
+  "module": "scraping",
+  "domain": "<target>",
+  "emails": [...],
+  "secrets": [
+    {"type": "Secret Type", "value": "...", "source_url": "..."}
+  ]
+}
+"""
+
 import subprocess
 import re
 import time
 import requests
-import json
 from serpapi.google_search import GoogleSearch
-from colorama import Fore, Style, init
+from colorama import Fore, init
 
 init(autoreset=True)
 
-# ==============================
-# CONFIG
-# ==============================
-TOKENS = [
-    "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",
-    "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",
-    "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"
-]
-token_index = 0
-
-API_KEY = "882df33509cf14b58f1c79fdfda125f75b67795d7a49fabdd9dfcda4a32ac203"
+# ======================
+# Config
+# ======================
+TOKENS = [ "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", "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", "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" ] 
+token_index = 0 
+API_KEY = "882df33509cf14b58f1c79fdfda125f75b67795d7a49fabdd9dfcda4a32ac203" 
 EMAIL_REGEX = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-
-# ==============================
-# GitHub Helpers
-# ==============================
-def get_headers():
-    global token_index
-    return {"Authorization": f"token {TOKENS[token_index]}"}
 
 DORKS = [
     '"@{domain}" in:file',
@@ -39,7 +45,7 @@ DORKS = [
     '"{keyword}" private_key',
 ]
 
-BASE_PATTERNS = {
+PATTERNS = {
     "GitHub Token": r"(ghp|gho|ghu|ghs|ghr)_[0-9a-zA-Z]{36}",
     "AWS Access Key ID": r"AKIA[0-9A-Z]{16}",
     "Google API Key": r"AIza[0-9A-Za-z\-_]{35}",
@@ -47,25 +53,37 @@ BASE_PATTERNS = {
     "Private Key": r"-----BEGIN (?:RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY-----[\s\S]+?-----END (?:RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY-----",
 }
 
+
+# ======================
+# Helpers
+# ======================
+def get_headers():
+    global token_index
+    return {"Authorization": f"token {TOKENS[token_index]}"}
+
+
 def github_search(query, page=1, per_page=20):
+    """Search GitHub code with rotation on tokens if rate-limited."""
     global token_index
     for _ in range(len(TOKENS) + 1):
         url = f"https://api.github.com/search/code?q={query}&page={page}&per_page={per_page}"
-        response = requests.get(url, headers=get_headers())
-        if response.status_code == 200:
-            return response.json()
-        elif response.status_code == 403:  # rate limit
+        resp = requests.get(url, headers=get_headers())
+        if resp.status_code == 200:
+            return resp.json()
+        elif resp.status_code == 403:  # rate limited
             token_index = (token_index + 1) % len(TOKENS)
             if token_index == 0:
-                print(Fore.YELLOW + "[!] Rate limit reached. Waiting 60s...")
+                print(Fore.YELLOW + "[!] GitHub rate limit reached. Waiting 60s...")
                 time.sleep(60)
         else:
             return None
     return None
 
+
 def extract_patterns(content, domain=None):
+    """Run regexes against content to extract leaks & emails."""
     results = {}
-    patterns = BASE_PATTERNS.copy()
+    patterns = PATTERNS.copy()
     if domain:
         patterns["Email"] = rf"[a-zA-Z0-9._%+-]+@{re.escape(domain)}"
 
@@ -76,17 +94,15 @@ def extract_patterns(content, domain=None):
             results[name] = list(set(flat_matches))
     return results
 
-# ==============================
-# TheHarvester Integration
-# ==============================
+
 def run_theharvester(domain):
+    """Run theHarvester to collect emails."""
     try:
         print(Fore.CYAN + "[*] Running TheHarvester...")
         cmd = ["theHarvester", "-d", domain, "-b", "all"]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         output = result.stdout + result.stderr
-        emails = re.findall(rf"[a-zA-Z0-9._%+-]+@{re.escape(domain)}", output)
-        return set(emails)
+        return set(re.findall(rf"[a-zA-Z0-9._%+-]+@{re.escape(domain)}", output))
     except subprocess.TimeoutExpired:
         print(Fore.YELLOW + "[!] TheHarvester timed out after 120s.")
         return set()
@@ -94,88 +110,73 @@ def run_theharvester(domain):
         print(Fore.RED + f"[!] TheHarvester error: {e}")
         return set()
 
-# ==============================
-# Pastebin via SerpAPI
-# ==============================
+
 def serpapi_search(query, num=10):
+    """Search Pastebin dumps with SerpAPI."""
     params = {"engine": "google", "q": query, "hl": "en", "num": num, "api_key": API_KEY}
     search = GoogleSearch(params)
     results = search.get_dict()
-    urls = []
-    for res in results.get("organic_results", []):
-        link = res.get("link")
-        if link:
-            urls.append(link)
-    return urls
+    return [r.get("link") for r in results.get("organic_results", []) if r.get("link")]
+
 
 def extract_emails_from_url(url, target_domain):
+    """Fetch URL and pull emails for domain."""
     try:
         if "pastebin.com/" in url and "/raw/" not in url:
             paste_id = url.split("/")[-1]
-            raw_url = f"https://pastebin.com/raw/{paste_id}"
-        else:
-            raw_url = url
+            url = f"https://pastebin.com/raw/{paste_id}"
 
-        response = requests.get(raw_url, timeout=10)
-        if response.status_code != 200:
+        resp = requests.get(url, timeout=10)
+        if resp.status_code != 200:
             return []
 
-        content = response.text
-        found_emails = re.findall(EMAIL_REGEX, content)
-        domain_pattern = re.compile(rf"[a-zA-Z0-9._%+-]+@{re.escape(target_domain)}\b")
-        return list(set(filter(domain_pattern.match, found_emails)))
+        content = resp.text
+        found = re.findall(EMAIL_REGEX, content)
+        return list({e for e in found if e.endswith("@" + target_domain)})
     except:
         return []
 
-# ==============================
-# Pipeline Entry Point
-# ==============================
+
+# ======================
+# Main Module Function
+# ======================
 def process(domain):
+    """Main entry for scraping module."""
     keyword = domain.split(".")[0]
-    all_emails = set()
-    found_secrets = []
+    all_emails, found_secrets = set(), []
 
     print(Fore.YELLOW + f"[*] Starting scraping for {domain}")
 
-    # 1. TheHarvester
-    harvester_emails = run_theharvester(domain)
-    all_emails.update(harvester_emails)
+    # 1. theHarvester
+    all_emails.update(run_theharvester(domain))
 
     # 2. Pastebin
     print(Fore.CYAN + "[*] Searching Pastebin via Google...")
-    pastebin_urls = serpapi_search(f'site:pastebin.com "{domain}"', num=15)
-    for url in pastebin_urls:
-        emails = extract_emails_from_url(url, domain)
-        all_emails.update(emails)
+    for url in serpapi_search(f'site:pastebin.com "{domain}"', num=15):
+        all_emails.update(extract_emails_from_url(url, domain))
 
-    # 3. GitHub dorks
+    # 3. GitHub Dorks
     print(Fore.CYAN + "[*] Running GitHub dorks...")
     for dork in DORKS:
         query = dork.format(keyword=keyword, domain=domain)
         page = 1
         while True:
             results = github_search(query, page=page)
-            if not results or "items" not in results or not results["items"]:
+            if not results or not results.get("items"):
                 break
 
             for item in results["items"]:
                 file_url = item["html_url"]
                 raw_url = file_url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
-
                 try:
-                    file_content = requests.get(raw_url, headers=get_headers(), timeout=10).text
-                    leaks = extract_patterns(file_content, domain)
-
+                    content = requests.get(raw_url, headers=get_headers(), timeout=10).text
+                    leaks = extract_patterns(content, domain)
                     for leak_type, values in leaks.items():
                         for v in values:
                             if leak_type == "Email":
                                 all_emails.add(v)
                             else:
-                                found_secrets.append({
-                                    "type": leak_type,
-                                    "value": v,
-                                    "source_url": file_url
-                                })
+                                found_secrets.append({"type": leak_type, "value": v, "source_url": file_url})
                 except Exception as e:
                     print(Fore.RED + f"[!] Error fetching {file_url}: {e}")
 
@@ -183,24 +184,10 @@ def process(domain):
             if page > 3:
                 break
 
-    # ==============================
-    # Final output (pipeline will save it)
-    # ==============================
-    output = {
+    # Final structured output
+    return {
+        "module": "scraping",
         "domain": domain,
-        "emails": sorted(list(all_emails)),
-        "secrets": found_secrets
+        "emails": sorted(all_emails),
+        "secrets": found_secrets,
     }
-
-    # Show results to user
-    print("\n=== Final Results ===\n")
-    print(Fore.GREEN + f"[+] Found {len(output['emails'])} unique emails")
-    for email in output["emails"]:
-        print(Fore.WHITE + f"   └─ {email}")
-
-    if output["secrets"]:
-        print(Fore.GREEN + f"\n[+] Found {len(output['secrets'])} secrets/tokens")
-        for s in output["secrets"]:
-            print(Fore.YELLOW + f"   └─ [{s['type']}] {s['value']}  -->  {s['source_url']}")
-
-    return output
