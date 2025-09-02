@@ -5,6 +5,10 @@ import importlib
 import os
 import sys
 import json
+from datetime import datetime
+
+# -------- Global scan collector --------
+scan_data = {}
 
 # -------- Classify Input --------
 def classify_input(input_string):
@@ -28,25 +32,23 @@ def ip_to_domain(ip):
         print(f"Error during nslookup: {e}")
         return None
 
-# -------- Save Module Report --------
-def save_module_report(domain, module_name, data):
+# -------- Save Master Scan File --------
+def save_scan_file(domain):
     """
-    Save a module's returned JSON to:
-      reconn/<safe_domain>reports/<module_name>.json
+    Write all collected results into one scan file:
+      <target>_scan.json
     """
     safe_domain = domain.replace("/", "_").replace("\\", "_")
-    project_root = os.path.abspath(os.path.dirname(__file__))  # this is 'reconn'
-    report_dir = os.path.join(project_root, f"{safe_domain}reports")
-
-    os.makedirs(report_dir, exist_ok=True)
-    path = os.path.join(report_dir, f"{module_name}.json")
+    filename = f"{safe_domain}_scan.json"
+    scan_data["target"] = domain
+    scan_data["timestamp"] = datetime.utcnow().isoformat()
 
     try:
-        with open(path, "w") as f:
-            json.dump(data, f, indent=4)
-        print(f"[+] Saved {module_name} report → {path}")
+        with open(filename, "w") as f:
+            json.dump(scan_data, f, indent=4)
+        print(f"\n[✓] Final scan file saved → {filename}")
     except Exception as e:
-        print(f"[!] Failed to save report for {module_name}: {e}")
+        print(f"[!] Failed to save scan file: {e}")
 
 # -------- Dynamic Module Loader --------
 def route_to_modules(domain):
@@ -61,7 +63,6 @@ def route_to_modules(domain):
         if file.endswith(".py") and not file.startswith("__"):
             module_basename = file[:-3]
 
-            # Allow both direct run and package run
             try:
                 if __package__:
                     module_name = f"{__package__}.modules.{module_basename}"
@@ -74,7 +75,10 @@ def route_to_modules(domain):
                 if hasattr(module, "process"):
                     print(f"\n[+] Running {module_name}...")
                     result = module.process(domain)
-                    save_module_report(domain, module_basename, result)
+
+                    # store each module's result into scan_data
+                    scan_data[module_basename] = result  
+
                     print(f"[✓] {module_name} finished")
                 else:
                     print(f"[!] {module_name} has no process(domain) function.")
@@ -97,18 +101,11 @@ def pipeline(input_string):
     else:
         domain = input_string
 
-    # Run modules
+    # Run all modules
     route_to_modules(domain)
 
-    # Import report in a safe way (works direct or package mode)
-    try:
-        if __package__:
-            from . import report
-        else:
-            import report
-        report.generate_report(domain)
-    except ImportError as e:
-        print(f"[!] Could not import report module: {e}")
+    # Save final combined scan file
+    save_scan_file(domain)
 
 # -------- Entry Point --------
 if __name__ == "__main__":
