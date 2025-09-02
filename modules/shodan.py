@@ -8,8 +8,8 @@ init(autoreset=True)
 API_KEY = "A0icrJAHa3I1Gb5Hb0XUJdRqtgQIXUgs"
 api = shodan.Shodan(API_KEY)
 
-
-def process(domain, safe_domain):
+def process(domain):
+    safe_domain = domain.replace("/", "_").replace("\\", "_")
     print(Fore.YELLOW + f"\n[+] Shodan scan for {domain}")
     results = {"module": "shodan", "target": domain, "shodan_results": []}
 
