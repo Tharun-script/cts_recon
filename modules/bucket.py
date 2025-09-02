@@ -1,58 +1,145 @@
-import socket, json
+#!/usr/bin/env python3
+import subprocess
+import re
+from urllib.parse import urlparse
 from datetime import datetime
-from colorama import Fore, Style, init
-import ipwhois
+from serpapi import GoogleSearch
 import boto3
 from botocore.exceptions import ClientError
+from colorama import Fore, Style, init
 
 init(autoreset=True)
 
-def whois_lookup(ip):
-    try:
-        obj = ipwhois.IPWhois(ip)
-        res = obj.lookup_rdap()
-        return {
-            "ip": ip,
-            "asn": res.get("asn"),
-            "asn_cidr": res.get("asn_cidr"),
-            "asn_desc": res.get("asn_description"),
-            "network": res.get("network", {}).get("cidr"),
-            "country": res.get("network", {}).get("country")
-        }
-    except:
-        return {"ip": ip, "error": "WHOIS failed"}
+# === CONFIG ===
+API_KEY = "2b19c67a0c195af60bec0829621249eb402eb18bc56464d6b641c780ef01af2c"
 
-def check_s3(bucket):
-    s3 = boto3.client("s3")
-    result = {"bucket": bucket, "readable": False, "writable": False}
+# -------------------
+# DNS + WHOIS
+# -------------------
+def get_dns_records(domain):
     try:
-        s3.list_objects_v2(Bucket=bucket, MaxKeys=1)
-        result["readable"] = True
+        result = subprocess.run(
+            ["dig", "+short", domain, "A"],
+            capture_output=True, text=True, check=True
+        )
+        ips = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        return ips
+    except Exception:
+        return []
+
+def get_whois_info(ip):
+    info = []
+    try:
+        result = subprocess.run(["whois", ip], capture_output=True, text=True, check=True)
+        for line in result.stdout.splitlines():
+            if re.search(r"NetRange|CIDR|route", line, re.IGNORECASE):
+                info.append(line.strip())
+    except Exception as e:
+        info.append(f"WHOIS lookup failed: {e}")
+    return info
+
+# -------------------
+# S3 Helpers
+# -------------------
+def extract_bucket_and_key(url):
+    parsed = urlparse(url)
+    host = parsed.netloc
+    path = parsed.path.lstrip("/")
+    bucket = None
+    if host.endswith(".s3.amazonaws.com"):
+        bucket = host.split(".s3.amazonaws.com")[0]
+    elif ".s3." in host:
+        bucket = host.split(".s3.")[0]
+    return bucket, path if path else None
+
+def check_object_read(bucket, key):
+    s3 = boto3.client("s3", aws_access_key_id="", aws_secret_access_key="")
+    try:
+        s3.get_object(Bucket=bucket, Key=key)
+        return True
     except ClientError:
-        result["readable"] = False
+        return False
+
+def check_object_write(bucket, key="test_permission_check.txt"):
+    s3 = boto3.client("s3", aws_access_key_id="", aws_secret_access_key="")
     try:
-        key = "test_upload.txt"
         s3.put_object(Bucket=bucket, Key=key, Body=b"test")
-        result["writable"] = True
         s3.delete_object(Bucket=bucket, Key=key)
+        return True
     except ClientError:
-        result["writable"] = False
-    return result
+        return False
 
-def process(domain, reports_dir):
-    print(Fore.YELLOW + f"\n[+] Running bucket module for {domain}" + Style.RESET_ALL)
-    results = {"module": "bucket", "target": domain, "dns": [], "whois": [], "s3": []}
-    try:
-        ips = socket.gethostbyname_ex(domain)[2]
-        results["dns"] = ips
+def serpapi_search(query, num=10):
+    params = {"engine": "google", "q": query, "hl": "en", "num": num, "api_key": API_KEY}
+    search = GoogleSearch(params)
+    results = search.get_dict()
+    urls = []
+    for res in results.get("organic_results", []):
+        link = res.get("link")
+        if link:
+            urls.append(link)
+    return urls
+
+# -------------------
+# Main process
+# -------------------
+def process(domain):
+    timestamp = datetime.now().isoformat()
+
+    results = {
+        "target": domain,
+        "timestamp": timestamp,
+        "dns": [],
+        "s3_buckets": []
+    }
+
+    print(Fore.CYAN + f"    [*] Starting bucket scan for {domain}...")
+
+    # ---------------- DNS + WHOIS ----------------
+    print(Fore.CYAN + f"    [*] Resolving DNS records for {domain}...")
+    ips = get_dns_records(domain)
+    if ips:
+        print(Fore.GREEN + f"    [✓] Found {len(ips)} IP(s):")
         for ip in ips:
-            results["whois"].append(whois_lookup(ip))
-    except:
-        pass
-    buckets = ["samplebucket1", "samplebucket2"]  # Replace with real guesses
-    for b in buckets:
-        results["s3"].append(check_s3(b))
-    path = f"{reports_dir}/bucket.json"
-    with open(path, "w") as f:
-        json.dump(results, f, indent=2)
-    print(Fore.GREEN + f"[✓] bucket results saved → {path}" + Style.RESET_ALL)
+            print(Fore.YELLOW + f"       └─ {ip}")
+            whois_info = get_whois_info(ip)
+            results["dns"].append({"ip": ip, "whois": whois_info})
+            if whois_info:
+                print(Fore.MAGENTA + f"          WHOIS: {', '.join(whois_info[:3])}...")
+    else:
+        print(Fore.RED + "    [!] No DNS A records found.")
+
+    # ---------------- S3 Buckets ----------------
+    print(Fore.CYAN + f"    [*] Searching for S3 buckets mentioning {domain}...")
+    s3_query = (
+        f'(site:*.s3.amazonaws.com OR site:*.s3-external-1.amazonaws.com '
+        f'OR site:*.s3.dualstack.us-east-1.amazonaws.com '
+        f'OR site:*.s3.ap-south-1.amazonaws.com) "{domain}"'
+    )
+    urls = serpapi_search(s3_query)
+
+    if urls:
+        print(Fore.GREEN + f"    [✓] Found {len(urls)} possible S3 URLs:")
+        for url in urls:
+            bucket, key = extract_bucket_and_key(url)
+            if bucket:
+                read = check_object_read(bucket, key) if key else False
+                write = check_object_write(bucket)
+                results["s3_buckets"].append({
+                    "url": url,
+                    "bucket": bucket,
+                    "key": key,
+                    "read": read,
+                    "write": write
+                })
+
+                print(Fore.YELLOW + f"       └─ Bucket: {bucket}")
+                if key:
+                    print(Fore.WHITE + f"          Key: {key}")
+                print(Fore.GREEN + f"          Readable: {read}, Writable: {write}")
+    else:
+        print(Fore.RED + "    [!] No related S3 buckets found.")
+
+    print(Fore.CYAN + f"    [*] Bucket scan for {domain} completed.\n")
+
+    return results
