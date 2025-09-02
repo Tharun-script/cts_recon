@@ -14,7 +14,9 @@ def generate_report(domain):
 
     combined_data = {}
     human_output = []
-    normalized = {"ip": [], "email": [], "domains": [], "subdomain": []}
+
+    # Initialize normalized with correct structure
+    normalized = {"ip": [], "email": [], "domains": [domain], "subdomain": []}
 
     if not os.path.isdir(report_dir):
         print(f"[!] No reports found for {domain}")
@@ -33,17 +35,21 @@ def generate_report(domain):
 
                 # Normalize via regex
                 text = json.dumps(data)
+
+                # Extract IPs and Emails
                 normalized["ip"].extend(re.findall(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", text))
                 normalized["email"].extend(re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text))
-                normalized["domains"].extend(re.findall(r"\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b", text))
+
+                # Extract subdomains (only those ending with the target domain but not equal to it)
                 normalized["subdomain"].extend(
                     [d for d in re.findall(r"\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b", text)
-                     if d != domain and d.endswith(domain)]
+                     if d.endswith(domain) and d != domain]
                 )
 
-    # Deduplicate
-    for key in normalized:
-        normalized[key] = sorted(set(normalized[key]))
+    # Deduplicate everything except "domains" (target domain should stay single)
+    normalized["ip"] = sorted(set(normalized["ip"]))
+    normalized["email"] = sorted(set(normalized["email"]))
+    normalized["subdomain"] = sorted(set(normalized["subdomain"]))
 
     # Write human-readable TXT
     with open(final_txt_path, "w") as f:
