@@ -9,10 +9,17 @@ from colorama import Fore, init
 
 init(autoreset=True)
 
-TOKENS = ["TOKEN1", "TOKEN2", "TOKEN3"]   # rotate GitHub tokens
+TOKENS = [
+    "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",
+    "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",
+    "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"
+]
 token_index = 0
-API_KEY = "YOUR_SERPAPI_KEY_HERE"
+
+API_KEY = "882df33509cf14b58f1c79fdfda125f75b67795d7a49fabdd9dfcda4a32ac203"
 EMAIL_REGEX = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+
+
 
 DORKS = [
     '"@{domain}" in:file',
@@ -125,3 +132,4 @@ def process(domain, safe_domain):
 
     print(Fore.CYAN + f"[✓] Scraping completed, results saved.\n")
     return results
+
