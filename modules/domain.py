@@ -122,7 +122,7 @@ def process(domain):
     all_subdomains = sorted(list(set(subfinder_subs + sublister_subs + crtsh_subs)))
     with open(os.path.join(out_dir, "subdomains_all.txt"), "w") as f:
         for sub in all_subdomains:
-            f.write(sub + "\n")a
+            f.write(sub + "\n")
     print(Fore.CYAN + f"[✓] Total {len(all_subdomains)} unique subdomains collected")
 
     # -------------------
@@ -152,4 +152,4 @@ def process(domain):
         report.save_report("subdomain", results)
 
     print(Fore.MAGENTA + f"\n✅ Subdomain module scan completed for {domain}")
-    return results
+    return f"Success"
