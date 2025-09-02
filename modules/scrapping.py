@@ -19,8 +19,6 @@ token_index = 0
 API_KEY = "882df33509cf14b58f1c79fdfda125f75b67795d7a49fabdd9dfcda4a32ac203"
 EMAIL_REGEX = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 
-
-
 DORKS = [
     '"@{domain}" in:file',
     '"{keyword}" aws_access_key_id',
@@ -34,11 +32,9 @@ PATTERNS = {
     "Google API Key": r"AIza[0-9A-Za-z\-_]{35}",
 }
 
-
 def get_headers():
     global token_index
     return {"Authorization": f"token {TOKENS[token_index]}"}
-
 
 def github_search(query, page=1, per_page=20):
     global token_index
@@ -52,7 +48,6 @@ def github_search(query, page=1, per_page=20):
             time.sleep(5)
     return None
 
-
 def extract_patterns(content, domain=None):
     results = {}
     patterns = PATTERNS.copy()
@@ -65,7 +60,6 @@ def extract_patterns(content, domain=None):
             results[name] = list(set(flat))
     return results
 
-
 def run_theharvester(domain):
     try:
         cmd = ["theHarvester", "-d", domain, "-b", "all"]
@@ -74,12 +68,10 @@ def run_theharvester(domain):
     except Exception:
         return set()
 
-
 def serpapi_search(query, num=10):
     params = {"engine": "google", "q": query, "hl": "en", "num": num, "api_key": API_KEY}
     return [r.get("link") for r in GoogleSearch(params).get_dict().get("organic_results", [])
             if r.get("link")]
-
 
 def extract_emails_from_url(url, domain):
     try:
@@ -90,8 +82,8 @@ def extract_emails_from_url(url, domain):
     except:
         return []
 
-
-def process(domain, safe_domain):
+def process(domain):
+    safe_domain = domain.replace("/", "_").replace("\\", "_")
     print(Fore.YELLOW + f"\n[+] Scraping {domain}")
     keyword = domain.split(".")[0]
     emails, secrets = set(), []
@@ -132,4 +124,3 @@ def process(domain, safe_domain):
 
     print(Fore.CYAN + f"[✓] Scraping completed, results saved.\n")
     return results
-
