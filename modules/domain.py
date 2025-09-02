@@ -2,6 +2,7 @@ import subprocess
 import requests
 import json
 import time
+import os
 from colorama import Fore, Style, init
 
 # Initialize colorama
@@ -114,32 +115,33 @@ def run(domain, safe_domain):
         "tech_scans": tech_results
     }
 
-    # Save results to JSON
-    filename = f"{safe_domain}_recon.json"
+    # Ensure output folder exists
+    save_path = os.path.join(os.getcwd(), f"{safe_domain}_recon.json")
     try:
-        with open(filename, "w", encoding="utf-8") as f:
+        with open(save_path, "w", encoding="utf-8") as f:
             json.dump(output, f, indent=4)
-        print(Fore.CYAN + f"\n[✓] Results saved to {filename}")
+        print(Fore.CYAN + f"\n[✓] Results saved to {save_path}")
     except Exception as e:
         print(Fore.RED + f"[!] Error saving JSON file: {e}")
 
     # Human summary
     print(Fore.CYAN + "\n=== Summary ===")
     print(Fore.WHITE + f"Total subdomains found: {len(all_subdomains)}")
-    print(Fore.WHITE + f"Alive subdomains: {len(alive)}")
+    if all_subdomains:
+        print(Fore.GREEN + "\n[All Subdomains]")
+        for sub in all_subdomains:
+            print(Fore.WHITE + f"  └─ {sub}")
+
+    print(Fore.WHITE + f"\nAlive subdomains: {len(alive)}")
     if alive:
         print(Fore.GREEN + "\n[Alive Domains]")
-        for sub in alive[:10]:
+        for sub in alive:
             print(Fore.WHITE + f"  └─ {sub}")
-        if len(alive) > 10:
-            print(Fore.YELLOW + f"  └─ ... and {len(alive) - 10} more")
 
     if tech_results:
         print(Fore.GREEN + "\n[Technology Detection]")
-        for t in tech_results[:10]:
+        for t in tech_results:
             print(Fore.WHITE + f"  └─ {t}")
-        if len(tech_results) > 10:
-            print(Fore.YELLOW + f"  └─ ... and {len(tech_results) - 10} more")
 
     print(Style.BRIGHT + Fore.CYAN + "\n[✓] Domain reconnaissance completed.\n")
     return output
