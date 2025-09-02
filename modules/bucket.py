@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import subprocess
 import re
-import os
 import json
+import os
 from urllib.parse import urlparse
 from datetime import datetime
 from serpapi import GoogleSearch
@@ -15,18 +15,17 @@ init(autoreset=True)
 # === CONFIG ===
 API_KEY = "2b19c67a0c195af60bec0829621249eb402eb18bc56464d6b641c780ef01af2c"
 
-
 # -------------------
-# Utils
+# Helpers
 # -------------------
-def save_json(domain, module, scan, data):
-    """Save results into {domain}_{module}_{scan}.json"""
-    safe_domain = domain.replace("http://", "").replace("https://", "").split("/")[0]
-    filename = f"{safe_domain}_{module}_{scan}.json"
-    with open(filename, "w", encoding="utf-8") as f:
+def write_json(target, module, scan, data):
+    """Write JSON to {target}_{module}_{scan}.json"""
+    safe_target = target.replace("://", "_").replace("/", "_")
+    filename = f"{safe_target}_{module}_{scan}.json"
+    with open(filename, "w") as f:
         json.dump(data, f, indent=4)
-    print(Fore.CYAN + f"    [>] Saved report → {filename}")
-
+    print(Fore.CYAN + f"    [*] Report written → {filename}")
+    return filename
 
 # -------------------
 # DNS + WHOIS
@@ -37,11 +36,9 @@ def get_dns_records(domain):
             ["dig", "+short", domain, "A"],
             capture_output=True, text=True, check=True
         )
-        ips = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-        return ips
+        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
     except Exception:
         return []
-
 
 def get_whois_info(ip):
     info = []
@@ -53,7 +50,6 @@ def get_whois_info(ip):
     except Exception as e:
         info.append(f"WHOIS lookup failed: {e}")
     return info
-
 
 # -------------------
 # S3 Helpers
@@ -69,7 +65,6 @@ def extract_bucket_and_key(url):
         bucket = host.split(".s3.")[0]
     return bucket, path if path else None
 
-
 def check_object_read(bucket, key):
     s3 = boto3.client("s3", aws_access_key_id="", aws_secret_access_key="")
     try:
@@ -77,7 +72,6 @@ def check_object_read(bucket, key):
         return True
     except ClientError:
         return False
-
 
 def check_object_write(bucket, key="test_permission_check.txt"):
     s3 = boto3.client("s3", aws_access_key_id="", aws_secret_access_key="")
@@ -87,7 +81,6 @@ def check_object_write(bucket, key="test_permission_check.txt"):
         return True
     except ClientError:
         return False
-
 
 def serpapi_search(query, num=10):
     params = {"engine": "google", "q": query, "hl": "en", "num": num, "api_key": API_KEY}
@@ -100,44 +93,36 @@ def serpapi_search(query, num=10):
             urls.append(link)
     return urls
 
-
 # -------------------
 # Main process
 # -------------------
 def process(domain):
     timestamp = datetime.now().isoformat()
 
-    results = {
-        "target": domain,
-        "timestamp": timestamp,
-        "dns": [],
-        "s3_buckets": []
-    }
+    print(Fore.CYAN + f"[*] Scanning target {domain}...")
 
-    print(Fore.CYAN + f"    [*] Starting scan for {domain}...")
-
-    # ---------------- DNS + WHOIS ----------------
+    # ---------------- DNS ----------------
     print(Fore.CYAN + f"    [*] Resolving DNS records for {domain}...")
     ips = get_dns_records(domain)
+    dns_report = {"target": domain, "timestamp": timestamp, "ips": ips}
+    write_json(domain, "dns", "scan", dns_report)
+
     if ips:
-        dns_report = []
         print(Fore.GREEN + f"    [✓] Found {len(ips)} IP(s):")
         for ip in ips:
             print(Fore.YELLOW + f"       └─ {ip}")
-            dns_report.append(ip)
-        save_json(domain, "dns", "scan", {"ips": dns_report})
-        results["dns"] = dns_report
-
-        # WHOIS per IP
-        whois_report = {}
-        for ip in ips:
-            whois_info = get_whois_info(ip)
-            whois_report[ip] = whois_info
-            if whois_info:
-                print(Fore.MAGENTA + f"          WHOIS for {ip}: {', '.join(whois_info[:3])}...")
-        save_json(domain, "whois", "scan", whois_report)
     else:
         print(Fore.RED + "    [!] No DNS A records found.")
+
+    # ---------------- WHOIS ----------------
+    whois_results = []
+    for ip in ips:
+        whois_info = get_whois_info(ip)
+        whois_results.append({"ip": ip, "whois": whois_info})
+        if whois_info:
+            print(Fore.MAGENTA + f"       WHOIS for {ip}: {', '.join(whois_info[:3])}...")
+    whois_report = {"target": domain, "timestamp": timestamp, "whois": whois_results}
+    write_json(domain, "whois", "scan", whois_report)
 
     # ---------------- S3 Buckets ----------------
     print(Fore.CYAN + f"    [*] Searching for S3 buckets mentioning {domain}...")
@@ -148,7 +133,7 @@ def process(domain):
     )
     urls = serpapi_search(s3_query)
 
-    bucket_results = []
+    s3_results = []
     if urls:
         print(Fore.GREEN + f"    [✓] Found {len(urls)} possible S3 URLs:")
         for url in urls:
@@ -156,7 +141,7 @@ def process(domain):
             if bucket:
                 read = check_object_read(bucket, key) if key else False
                 write = check_object_write(bucket)
-                bucket_results.append({
+                s3_results.append({
                     "url": url,
                     "bucket": bucket,
                     "key": key,
@@ -168,11 +153,11 @@ def process(domain):
                 if key:
                     print(Fore.WHITE + f"          Key: {key}")
                 print(Fore.GREEN + f"          Readable: {read}, Writable: {write}")
-
-        save_json(domain, "bucket", "scan", bucket_results)
     else:
         print(Fore.RED + "    [!] No related S3 buckets found.")
 
-    print(Fore.CYAN + f"    [*] Scan for {domain} completed.\n")
+    s3_report = {"target": domain, "timestamp": timestamp, "s3_buckets": s3_results}
+    write_json(domain, "bucket", "scan", s3_report)
 
-    return results
+    print(Fore.CYAN + f"\n[*] Scanning for {domain} completed.\n")
+    return True
