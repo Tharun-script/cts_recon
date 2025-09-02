@@ -72,12 +72,12 @@ def run(domain, safe_domain):
 
     # 1. Subfinder
     print(Fore.YELLOW + "[*] Running Subfinder...")
-    subfinder_results = run_subfinder(domain)
+    subfinder_results = run_subfinder(safe_domain)
     print(Fore.GREEN + f"[✓] Found {len(subfinder_results)} subdomains with Subfinder")
 
     # 2. crt.sh
     print(Fore.YELLOW + "[*] Fetching from crt.sh...")
-    crtsh_results = run_crtsh(domain)
+    crtsh_results = run_crtsh(safe_domain)
     print(Fore.GREEN + f"[✓] Found {len(crtsh_results)} subdomains from crt.sh")
 
     # Combine
@@ -125,5 +125,8 @@ def run(domain, safe_domain):
 
 
 # 🔑 Entry point for pipeline
-def process(domain, safe_domain):
+def process(domain, safe_domain=None):
+    if not safe_domain:
+        # Normalize domain → strip http/https and any path
+        safe_domain = domain.replace("http://", "").replace("https://", "").split("/")[0]
     return run(domain, safe_domain)
