@@ -4,7 +4,6 @@ import re
 import time
 import requests
 import json
-import os
 from serpapi.google_search import GoogleSearch
 from colorama import Fore, Style, init
 
@@ -185,7 +184,7 @@ def process(domain):
                 break
 
     # ==============================
-    # Final output
+    # Final output (pipeline will save it)
     # ==============================
     output = {
         "domain": domain,
@@ -203,24 +202,5 @@ def process(domain):
         print(Fore.GREEN + f"\n[+] Found {len(output['secrets'])} secrets/tokens")
         for s in output["secrets"]:
             print(Fore.YELLOW + f"   └─ [{s['type']}] {s['value']}  -->  {s['source_url']}")
-
-    # Save JSON directly inside {domain}/scraping.json
-    os.makedirs(domain, exist_ok=True)
-    output_file = os.path.join(domain, "scraping.json")
-
-    if os.path.exists(output_file):
-        with open(output_file, "r") as f:
-            try:
-                existing = json.load(f)
-            except:
-                existing = []
-    else:
-        existing = []
-
-    existing.append(output)
-    with open(output_file, "w") as f:
-        json.dump(existing, f, indent=4)
-
-    print(Fore.CYAN + f"\n[+] Scraping results saved to {output_file}")
 
     return output
