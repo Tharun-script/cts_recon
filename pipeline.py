@@ -33,13 +33,8 @@ def save_module_report(domain, module_name, data):
     """
     Save a module's returned JSON to:
       reconn/<safe_domain>reports/<module_name>.json
-    Example:
-      /home/kali/Downloads/reconn/cognizant.comreports/bucket.json
     """
-    # sanitize domain minimally (remove path separators)
     safe_domain = domain.replace("/", "_").replace("\\", "_")
-
-    # reports folder = <project_root>/<domain>reports
     project_root = os.path.abspath(os.path.dirname(__file__))  # this is 'reconn'
     report_dir = os.path.join(project_root, f"{safe_domain}reports")
 
@@ -65,21 +60,26 @@ def route_to_modules(domain):
     for file in sorted(os.listdir(modules_dir)):
         if file.endswith(".py") and not file.startswith("__"):
             module_basename = file[:-3]
-            module_name = f"modules.{module_basename}"  # strip .py
+
+            # Allow both direct run and package run
             try:
-                # import module (reload to pick up changes if needed)
+                if __package__:
+                    module_name = f"{__package__}.modules.{module_basename}"
+                else:
+                    module_name = f"modules.{module_basename}"
+
                 module = importlib.import_module(module_name)
                 importlib.reload(module)
+
                 if hasattr(module, "process"):
                     print(f"\n[+] Running {module_name}...")
                     result = module.process(domain)
-                    # Save module output to domain-specific folder
                     save_module_report(domain, module_basename, result)
                     print(f"[✓] {module_name} finished")
                 else:
                     print(f"[!] {module_name} has no process(domain) function.")
             except Exception as e:
-                print(f"[!] Error running {module_name}: {e}")
+                print(f"[!] Error running {module_basename}: {e}")
 
 # -------- Main Pipeline --------
 def pipeline(input_string):
@@ -97,8 +97,18 @@ def pipeline(input_string):
     else:
         domain = input_string
 
-    # Forward to modules
+    # Run modules
     route_to_modules(domain)
+
+    # Import report in a safe way (works direct or package mode)
+    try:
+        if __package__:
+            from . import report
+        else:
+            import report
+        report.generate_report(domain)
+    except ImportError as e:
+        print(f"[!] Could not import report module: {e}")
 
 # -------- Entry Point --------
 if __name__ == "__main__":
