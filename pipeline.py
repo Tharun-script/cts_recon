@@ -4,6 +4,7 @@ import subprocess
 import importlib
 import os
 import sys
+import json
 
 # -------- Classify Input --------
 def classify_input(input_string):
@@ -27,35 +28,54 @@ def ip_to_domain(ip):
         print(f"Error during nslookup: {e}")
         return None
 
+# -------- Save Module Report --------
+def save_module_report(domain, module_name, data):
+    """
+    Save a module's returned JSON to:
+      reconn/<safe_domain>reports/<module_name>.json
+    Example:
+      /home/kali/Downloads/reconn/cognizant.comreports/bucket.json
+    """
+    # sanitize domain minimally (remove path separators)
+    safe_domain = domain.replace("/", "_").replace("\\", "_")
+
+    # reports folder = <project_root>/<domain>reports
+    project_root = os.path.abspath(os.path.dirname(__file__))  # this is 'reconn'
+    report_dir = os.path.join(project_root, f"{safe_domain}reports")
+
+    os.makedirs(report_dir, exist_ok=True)
+    path = os.path.join(report_dir, f"{module_name}.json")
+
+    try:
+        with open(path, "w") as f:
+            json.dump(data, f, indent=4)
+        print(f"[+] Saved {module_name} report → {path}")
+    except Exception as e:
+        print(f"[!] Failed to save report for {module_name}: {e}")
+
 # -------- Dynamic Module Loader --------
 def route_to_modules(domain):
-    """Automatically load and run all modules in modules/ folder and forward to report.py"""
+    """Automatically load and run all modules in modules/ folder"""
     modules_dir = os.path.join(os.path.dirname(__file__), "modules")
-    
-    # Import report.py from current directory
-    try:
-        import report
-    except ImportError:
-        report = None
-        print("[!] report.py not found. Results will not be saved in structured/normalized format.")
 
-    for file in os.listdir(modules_dir):
+    if not os.path.isdir(modules_dir):
+        print(f"[!] Modules directory not found: {modules_dir}")
+        return
+
+    for file in sorted(os.listdir(modules_dir)):
         if file.endswith(".py") and not file.startswith("__"):
-            module_name = f"modules.{file[:-3]}"  # strip .py
+            module_basename = file[:-3]
+            module_name = f"modules.{module_basename}"  # strip .py
             try:
+                # import module (reload to pick up changes if needed)
                 module = importlib.import_module(module_name)
+                importlib.reload(module)
                 if hasattr(module, "process"):
                     print(f"\n[+] Running {module_name}...")
                     result = module.process(domain)
-                    print(f"[✓] {module_name} finished. Result: {result}")
-
-                    # Forward result to report.py if available
-                    if report:
-                        try:
-                            report.save_report(file[:-3], result)
-                        except Exception as e:
-                            print(f"[!] Error saving report for {module_name}: {e}")
-
+                    # Save module output to domain-specific folder
+                    save_module_report(domain, module_basename, result)
+                    print(f"[✓] {module_name} finished")
                 else:
                     print(f"[!] {module_name} has no process(domain) function.")
             except Exception as e:
@@ -85,6 +105,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         user_input = sys.argv[1]
     else:
-        user_input = input("Enter domain or IP: ")
+        user_input = input("Enter domain or IP: ").strip()
 
     pipeline(user_input)
