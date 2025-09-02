@@ -1,94 +1,78 @@
-import subprocess
-import requests
-import time
-import json
-import os
+import subprocess, requests, time, json
 from colorama import Fore, Style, init
 
 init(autoreset=True)
 
-
 def run_subfinder(domain):
+    print(Fore.CYAN + "[*] Running Subfinder..." + Style.RESET_ALL)
     try:
-        print(Fore.CYAN + "\n[*] Running Subfinder..." + Style.RESET_ALL)
         result = subprocess.run(
             ["subfinder", "-d", domain, "-silent"],
-            capture_output=True, text=True, check=False
+            capture_output=True, text=True
         )
         return result.stdout.splitlines()
-    except Exception as e:
-        print(Fore.RED + f"[!] Subfinder error: {e}" + Style.RESET_ALL)
+    except:
         return []
 
-
-def fetch_crtsh(domain, retries=3, delay=5):
-    url = f"https://crt.sh/?q=%25.{domain}&output=json"
+def fetch_crtsh(domain, retries=3):
     subs = []
-    for attempt in range(1, retries + 1):
+    url = f"https://crt.sh/?q=%25.{domain}&output=json"
+    for i in range(retries):
         try:
-            print(Fore.CYAN + f"[*] crt.sh attempt {attempt}" + Style.RESET_ALL)
-            resp = requests.get(url, timeout=30)
-            if resp.status_code == 200:
-                data = resp.json()
-                subs = [entry["name_value"] for entry in data if "name_value" in entry]
+            print(Fore.CYAN + f"[*] crt.sh attempt {i+1}" + Style.RESET_ALL)
+            r = requests.get(url, timeout=30)
+            if r.status_code == 200:
+                data = r.json()
+                subs += [entry["name_value"] for entry in data if "name_value" in entry]
                 break
-        except Exception as e:
-            print(Fore.YELLOW + f"[!] crt.sh error: {e}, retrying..." + Style.RESET_ALL)
-            time.sleep(delay)
-    return subs
-
+        except:
+            time.sleep(5)
+    return list(set(subs))
 
 def probe_alive(subdomains):
+    print(Fore.YELLOW + "[*] Probing alive hosts with httpx..." + Style.RESET_ALL)
+    alive = []
     try:
         result = subprocess.run(
             ["httpx", "-silent"],
             input="\n".join(subdomains),
             capture_output=True, text=True
         )
-        return result.stdout.splitlines()
-    except Exception:
-        return []
-
+        alive = result.stdout.splitlines()
+    except:
+        pass
+    return alive
 
 def run_tech_scans(alive_domains):
+    tech_list = []
     try:
         result = subprocess.run(
             ["httpx", "-silent", "-tech-detect"],
             input="\n".join(alive_domains),
             capture_output=True, text=True
         )
-        lines = result.stdout.splitlines()
-        out = []
-        for line in lines:
+        for line in result.stdout.splitlines():
             parts = line.split(" [")
             domain = parts[0].strip()
             techs = parts[1].replace("]", "").split(", ") if len(parts) > 1 else []
-            out.append({"domain": domain, "tech": techs})
-        return out
-    except Exception:
-        return []
+            tech_list.append({"domain": domain, "technologies": techs})
+    except:
+        pass
+    return tech_list
 
-
-def process(domain):
-    """Main standardized process for domain module"""
+def process(domain, reports_dir):
     print(Fore.YELLOW + f"\n[+] Running domain module for {domain}" + Style.RESET_ALL)
-
-    subs = set(run_subfinder(domain) + fetch_crtsh(domain))
-    alive = probe_alive(list(subs))
+    subdomains = list(set(run_subfinder(domain) + fetch_crtsh(domain)))
+    alive = probe_alive(subdomains)
     tech = run_tech_scans(alive)
-
     findings = {
-        "domains": [domain],
-        "subdomains": list(subs),
-        "ips": [],
-        "emails": [],
-        "alive": alive,
+        "module": "domain",
+        "target": domain,
+        "subdomains": subdomains,
+        "alive_hosts": alive,
         "technologies": tech
     }
-
-    out_file = f"{domain}_domain.json"
-    with open(out_file, "w") as f:
-        json.dump({"module": "domain", "findings": findings}, f, indent=2)
-
-    print(Fore.GREEN + f"[✓] domain results saved to {out_file}" + Style.RESET_ALL)
-    return findings
+    path = f"{reports_dir}/domain.json"
+    with open(path, "w") as f:
+        json.dump(findings, f, indent=2)
+    print(Fore.GREEN + f"[✓] domain results saved → {path}" + Style.RESET_ALL)
