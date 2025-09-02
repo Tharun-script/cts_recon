@@ -13,7 +13,9 @@ from colorama import Fore, init
 
 init(autoreset=True)
 
-API_KEY = "YOUR_SERPAPI_KEY_HERE"
+API_KEY = "2b19c67a0c195af60bec0829621249eb402eb18bc56464d6b641c780ef01af2c"
+
+
 
 # -------------------
 # Helpers
@@ -137,3 +139,4 @@ def process(domain, safe_domain):
 
     print(Fore.CYAN + f"[✓] Results saved to {safe_domain}_bucket.json\n")
     return results
+
