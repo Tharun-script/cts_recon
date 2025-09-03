@@ -1,41 +1,57 @@
-#!/usr/bin/env python3
 import subprocess
 import requests
 import json
-import tempfile
+import time
+import os
 from colorama import Fore, Style, init
+from tempfile import NamedTemporaryFile
 
+# Initialize colorama
 init(autoreset=True)
 
 
 def run_subfinder(domain):
     try:
+        print(Fore.YELLOW + "[*] Running Subfinder...")
         result = subprocess.run(
             ["subfinder", "-d", domain, "-silent"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
-        return set(result.stdout.splitlines())
+        subs = set(result.stdout.splitlines())
+        print(Fore.GREEN + f"[✓] Subfinder found {len(subs)} subdomains")
+        return subs
     except Exception as e:
         print(Fore.RED + f"[!] Error running subfinder: {e}")
         return set()
 
 
-def run_crtsh(domain):
+def run_crtsh(domain, retries=3, delay=5):
     subdomains = set()
-    try:
-        url = f"https://crt.sh/?q=%25.{domain}&output=json"
-        resp = requests.get(url, timeout=15)
-        if resp.status_code == 200:
-            data = resp.json()
-            for entry in data:
-                name = entry.get("name_value")
-                if name:
-                    for sub in name.split("\n"):
-                        sub = sub.strip()
-                        if "*" not in sub:
-                            subdomains.add(sub)
-    except Exception as e:
-        print(Fore.RED + f"[!] Error fetching crt.sh: {e}")
+    url = f"https://crt.sh/?q=%25.{domain}&output=json"
+
+    for attempt in range(1, retries + 1):
+        try:
+            print(Fore.YELLOW + f"[*] Fetching from crt.sh (attempt {attempt}/{retries})...")
+            resp = requests.get(url, timeout=60)
+            if resp.status_code == 200:
+                for entry in resp.json():
+                    name = entry.get("name_value")
+                    if name:
+                        for sub in name.split("\n"):
+                            sub = sub.strip()
+                            if "*" not in sub:
+                                subdomains.add(sub)
+                print(Fore.GREEN + f"[✓] crt.sh found {len(subdomains)} subdomains")
+                return subdomains
+            else:
+                print(Fore.RED + f"[!] crt.sh returned status {resp.status_code}")
+        except Exception as e:
+            print(Fore.RED + f"[!] Error fetching crt.sh: {e}")
+            if attempt < retries:
+                print(Fore.YELLOW + f"    Retrying in {delay}s...")
+                time.sleep(delay)
+
+    print(Fore.RED + "[!] crt.sh failed after all retries")
     return subdomains
 
 
@@ -43,19 +59,28 @@ def probe_alive(subdomains):
     alive = []
     if not subdomains:
         return alive
+
+    print(Fore.YELLOW + "\n[*] Probing alive subdomains with httpx...")
     try:
-        with tempfile.NamedTemporaryFile(mode="w+", delete=True) as f:
-            f.write("\n".join(subdomains))
-            f.flush()
-            result = subprocess.run(
-                ["httpx", "-silent", "-list", f.name],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            alive = result.stdout.splitlines()
+        # Write subdomains to temp file
+        with NamedTemporaryFile(mode='w+', delete=False) as f:
+            for sub in subdomains:
+                f.write(sub + "\n")
+            temp_file = f.name
+
+        process = subprocess.Popen(
+            ["httpx", "-l", temp_file, "-ports", "80,443", "-silent", "-timeout", "30"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        stdout, _ = process.communicate()
+        alive = stdout.decode().splitlines()
+        print(Fore.GREEN + f"[✓] Found {len(alive)} alive subdomains")
     except Exception as e:
         print(Fore.RED + f"[!] Error probing alive domains: {e}")
+    finally:
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+
     return alive
 
 
@@ -63,49 +88,49 @@ def run_tech_scans(alive_subdomains):
     results = []
     if not alive_subdomains:
         return results
+
+    print(Fore.YELLOW + "\n[*] Running technology detection scans with httpx...")
     try:
-        with tempfile.NamedTemporaryFile(mode="w+", delete=True) as f:
-            f.write("\n".join(alive_subdomains))
-            f.flush()
-            result = subprocess.run(
-                ["httpx", "-tech-detect", "-silent", "-list", f.name],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            results = result.stdout.splitlines()
+        # Write alive domains to temp file
+        with NamedTemporaryFile(mode='w+', delete=False) as f:
+            for sub in alive_subdomains:
+                f.write(sub + "\n")
+            temp_file = f.name
+
+        process = subprocess.Popen(
+            ["httpx", "-l", temp_file, "-tech-detect", "-ports", "80,443", "-silent"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        stdout, _ = process.communicate()
+        results = stdout.decode().splitlines()
+        print(Fore.GREEN + f"[✓] Technology fingerprints collected: {len(results)}")
     except Exception as e:
         print(Fore.RED + f"[!] Error running tech scans: {e}")
+    finally:
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+
     return results
 
 
-# -----------------------
-# Pipeline-compatible entry
-# -----------------------
-def process(domain, safe_domain=None):
+def run(domain, safe_domain):
     print(Fore.CYAN + f"\n[+] Starting domain reconnaissance for: {domain}\n")
 
-    # Subdomain enumeration
-    print(Fore.YELLOW + "[*] Running Subfinder...")
-    subfinder_results = run_subfinder(domain)
-    print(Fore.GREEN + f"[✓] Found {len(subfinder_results)} unique subdomains with Subfinder")
+    # 1. Subfinder
+    subfinder_results = run_subfinder(safe_domain)
 
-    print(Fore.YELLOW + "[*] Fetching subdomains from crt.sh...")
-    crtsh_results = run_crtsh(domain)
-    print(Fore.GREEN + f"[✓] Found {len(crtsh_results)} unique subdomains from crt.sh")
+    # 2. crt.sh
+    crtsh_results = run_crtsh(safe_domain)
 
+    # Combine all subdomains
     all_subdomains = sorted(subfinder_results.union(crtsh_results))
-    print(Fore.CYAN + f"[+] Total unique subdomains collected: {len(all_subdomains)}")
+    print(Fore.CYAN + f"\n[+] Total unique subdomains: {len(all_subdomains)}")
 
-    # Alive probing
-    print(Fore.YELLOW + "\n[*] Probing alive subdomains with httpx...")
+    # 3. Probe alive
     alive = probe_alive(all_subdomains)
-    print(Fore.GREEN + f"[✓] Found {len(alive)} alive subdomains")
 
-    # Tech scans
-    print(Fore.YELLOW + "\n[*] Running technology detection scans...")
+    # 4. Technology scans
     tech_results = run_tech_scans(alive)
-    print(Fore.GREEN + f"[✓] Technology fingerprints collected: {len(tech_results)}")
 
     # Build JSON output
     output = {
@@ -115,9 +140,44 @@ def process(domain, safe_domain=None):
         "tech_scans": tech_results
     }
 
+    # Save results
+    save_path = os.path.join(os.getcwd(), f"{safe_domain}_recon.json")
+    try:
+        with open(save_path, "w", encoding="utf-8") as f:
+            json.dump(output, f, indent=4)
+        print(Fore.CYAN + f"\n[✓] Results saved to {save_path}")
+    except Exception as e:
+        print(Fore.RED + f"[!] Error saving JSON file: {e}")
+
+    # Human-readable summary
     print(Fore.CYAN + "\n=== Summary ===")
     print(Fore.WHITE + f"Total subdomains found: {len(all_subdomains)}")
-    print(Fore.WHITE + f"Alive subdomains: {len(alive)}")
+    if all_subdomains:
+        print(Fore.GREEN + "\n[All Subdomains]")
+        for sub in all_subdomains:
+            print(Fore.WHITE + f"  └─ {sub}")
+
+    print(Fore.WHITE + f"\nAlive subdomains: {len(alive)}")
+    if alive:
+        print(Fore.GREEN + "\n[Alive Domains]")
+        for sub in alive:
+            print(Fore.WHITE + f"  └─ {sub}")
+
+    if tech_results:
+        print(Fore.GREEN + "\n[Technology Detection]")
+        for t in tech_results:
+            print(Fore.WHITE + f"  └─ {t}")
 
     print(Style.BRIGHT + Fore.CYAN + "\n[✓] Domain reconnaissance completed.\n")
     return output
+
+
+# Entry point
+def process(domain, safe_domain=None):
+    if not safe_domain:
+        safe_domain = domain.replace("http://", "").replace("https://", "").split("/")[0]
+    return run(domain, safe_domain)
+
+
+# Example usage
+# process("cognizant.com")
