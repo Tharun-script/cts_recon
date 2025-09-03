@@ -46,9 +46,9 @@ def run_crtsh(domain, retries=3, delay=5):
                 print(Fore.RED + f"[!] crt.sh returned status {resp.status_code}")
         except Exception as e:
             print(Fore.RED + f"[!] Error fetching crt.sh: {e}")
-            if attempt < retries:
-                print(Fore.YELLOW + f"    Retrying in {delay}s...")
-                time.sleep(delay)
+        if attempt < retries:
+            print(Fore.YELLOW + f"    Retrying in {delay}s...")
+            time.sleep(delay)
 
     print(Fore.RED + "[!] crt.sh failed after all retries")
     return subdomains
@@ -57,10 +57,12 @@ def run_crtsh(domain, retries=3, delay=5):
 def probe_alive(subdomains):
     alive = []
     try:
+        if not subdomains:
+            return alive
         print(Fore.YELLOW + "\n[*] Probing alive subdomains with httpx...")
         input_data = "\n".join(subdomains).encode()
         process = subprocess.Popen(
-            ["httpx", "-silent"],
+            ["httpx", "-silent", "-timeout", "30"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
         stdout, _ = process.communicate(input=input_data)
@@ -72,20 +74,31 @@ def probe_alive(subdomains):
 
 
 def run_tech_scans(alive_subdomains):
-    results = []
+    techstack = []
     try:
+        if not alive_subdomains:
+            return techstack
         print(Fore.YELLOW + "\n[*] Running technology detection scans with httpx...")
         input_data = "\n".join(alive_subdomains).encode()
         process = subprocess.Popen(
-            ["httpx", "-tech-detect", "-silent"],
+            ["httpx", "-tech-detect", "-silent", "-timeout", "30"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
         stdout, _ = process.communicate(input=input_data)
-        results = stdout.decode().splitlines()
-        print(Fore.GREEN + f"[✓] Technology fingerprints collected: {len(results)}")
+        techstack = stdout.decode().splitlines()
+        print(Fore.GREEN + f"[✓] Technology fingerprints collected: {len(techstack)}")
     except Exception as e:
         print(Fore.RED + f"[!] Error running tech scans: {e}")
-    return results
+    return techstack
+
+
+def save_json(filename, data):
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+        print(Fore.CYAN + f"[✓] Saved results to {filename}")
+    except Exception as e:
+        print(Fore.RED + f"[!] Error saving JSON file {filename}: {e}")
 
 
 def run(domain, safe_domain):
@@ -101,59 +114,38 @@ def run(domain, safe_domain):
     all_subdomains = sorted(subfinder_results.union(crtsh_results))
     print(Fore.CYAN + f"\n[+] Total unique subdomains: {len(all_subdomains)}")
 
-    # 3. Probe
+    # Save subdomains JSON
+    save_json(f"{safe_domain}_subdomains.json", {"target": domain, "subdomains": all_subdomains})
+
+    # 3. Probe alive
     alive = probe_alive(all_subdomains)
+    save_json(f"{safe_domain}_alive.json", {"target": domain, "alive_subdomains": alive})
 
     # 4. Tech scans
-    tech_results = run_tech_scans(alive)
+    techstack = run_tech_scans(alive)
+    save_json(f"{safe_domain}_techstack.json", {"target": domain, "techstack": techstack})
 
-    # Build JSON output
-    output = {
-        "domain": domain,
-        "subdomains": all_subdomains,
-        "alive": alive,
-        "tech_scans": tech_results
-    }
-
-    # Ensure output folder exists
-    save_path = os.path.join(os.getcwd(), f"{safe_domain}_recon.json")
-    try:
-        with open(save_path, "w", encoding="utf-8") as f:
-            json.dump(output, f, indent=4)
-        print(Fore.CYAN + f"\n[✓] Results saved to {save_path}")
-    except Exception as e:
-        print(Fore.RED + f"[!] Error saving JSON file: {e}")
-
-    # Human summary
+    # Summary
     print(Fore.CYAN + "\n=== Summary ===")
     print(Fore.WHITE + f"Total subdomains found: {len(all_subdomains)}")
-    if all_subdomains:
-        print(Fore.GREEN + "\n[All Subdomains]")
-        for sub in all_subdomains:
-            print(Fore.WHITE + f"  └─ {sub}")
-
-    print(Fore.WHITE + f"\nAlive subdomains: {len(alive)}")
-    if alive:
-        print(Fore.GREEN + "\n[Alive Domains]")
-        for sub in alive:
-            print(Fore.WHITE + f"  └─ {sub}")
-
-    if tech_results:
-        print(Fore.GREEN + "\n[Technology Detection]")
-        for t in tech_results:
-            print(Fore.WHITE + f"  └─ {t}")
-
+    print(Fore.WHITE + f"Alive subdomains: {len(alive)}")
+    print(Fore.WHITE + f"Tech fingerprints: {len(techstack)}")
     print(Style.BRIGHT + Fore.CYAN + "\n[✓] Domain reconnaissance completed.\n")
-    return output
+
+    # Return combined data
+    return {
+        "target": domain,
+        "subdomains": all_subdomains,
+        "alive_subdomains": alive,
+        "techstack": techstack
+    }
 
 
-# 🔑 Entry point for pipeline
 def process(domain, safe_domain=None):
     if not safe_domain:
-        # Normalize domain → strip http/https and any path
         safe_domain = domain.replace("http://", "").replace("https://", "").split("/")[0]
     return run(domain, safe_domain)
 
 
-# Example run (uncomment for direct execution)
-# process("cognizant.com")
+# Example usage:
+# process("rmkcet.ac.in")
