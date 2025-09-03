@@ -1,12 +1,30 @@
+#!/usr/bin/env python3
+"""
+Domain Module
+-------------
+Enumerates subdomains, checks alive hosts, and collects tech fingerprints.
+
+Output JSON schema:
+{
+    "module": "domain",
+    "domain": "<target>",
+    "subdomains": [...],
+    "alive": [...],
+    "tech_scans": [...]
+}
+"""
+
 import subprocess
 import requests
-import json
 from colorama import Fore, Style, init
 
 # Initialize colorama
 init(autoreset=True)
 
 
+# ----------------------
+# Helper functions
+# ----------------------
 def run_subfinder(domain):
     """Run Subfinder to enumerate subdomains"""
     try:
@@ -14,8 +32,7 @@ def run_subfinder(domain):
             ["subfinder", "-d", domain, "-silent"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
-        subdomains = set(result.stdout.splitlines())
-        return subdomains
+        return set(result.stdout.splitlines())
     except Exception as e:
         print(Fore.RED + f"[!] Error running subfinder: {e}")
         return set()
@@ -32,7 +49,6 @@ def run_crtsh(domain):
             for entry in data:
                 name = entry.get("name_value")
                 if name:
-                    # Handle wildcard and multiple values
                     for sub in name.split("\n"):
                         sub = sub.strip()
                         if "*" not in sub:
@@ -51,7 +67,7 @@ def probe_alive(subdomains):
             ["httpx", "-silent"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
-        stdout, stderr = process.communicate(input=input_data)
+        stdout, _ = process.communicate(input=input_data)
         alive = stdout.decode().splitlines()
     except Exception as e:
         print(Fore.RED + f"[!] Error probing alive domains: {e}")
@@ -67,15 +83,20 @@ def run_tech_scans(alive_subdomains):
             ["httpx", "-tech-detect", "-silent"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
-        stdout, stderr = process.communicate(input=input_data)
+        stdout, _ = process.communicate(input=input_data)
         results = stdout.decode().splitlines()
     except Exception as e:
         print(Fore.RED + f"[!] Error running tech scans: {e}")
     return results
 
 
-def run(domain, safe_domain):
-    """Main entry for pipeline"""
+# ----------------------
+# Main pipeline entry
+# ----------------------
+def process(domain):
+    """Main function called by pipeline.py"""
+    safe_domain = domain.replace(".", "-")  # optional safe version
+
     print(Fore.CYAN + f"\n[+] Starting domain reconnaissance for: {domain}\n")
 
     # 1. Subfinder
@@ -104,6 +125,7 @@ def run(domain, safe_domain):
 
     # Build JSON output
     output = {
+        "module": "domain",
         "domain": domain,
         "subdomains": all_subdomains,
         "alive": alive,
@@ -116,7 +138,7 @@ def run(domain, safe_domain):
     print(Fore.WHITE + f"Alive subdomains: {len(alive)}")
     if alive:
         print(Fore.GREEN + "\n[Alive Domains]")
-        for sub in alive[:10]:  # show only first 10 to avoid flooding
+        for sub in alive[:10]:
             print(Fore.WHITE + f"  └─ {sub}")
         if len(alive) > 10:
             print(Fore.YELLOW + f"  └─ ... and {len(alive) - 10} more")
@@ -130,5 +152,4 @@ def run(domain, safe_domain):
 
     print(Style.BRIGHT + Fore.CYAN + "\n[✓] Domain reconnaissance completed.\n")
 
-    # Return to pipeline (pipeline saves JSON into reports/domain.json)
     return output
