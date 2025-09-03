@@ -89,7 +89,6 @@ def process(domain):
     # ---------------- DNS ----------------
     print(Fore.CYAN + f"    [*] Resolving DNS records for {domain}...")
     ips = get_dns_records(domain)
-
     if ips:
         print(Fore.GREEN + f"    [✓] Found {len(ips)} IP(s):")
         for ip in ips:
