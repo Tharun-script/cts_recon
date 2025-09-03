@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Domain Module
--------------
-Enumerates subdomains, checks alive hosts, and collects tech fingerprints.
+Domain Reconnaissance Module
+----------------------------
+- Enumerates subdomains (subfinder + crt.sh)
+- Probes alive domains (httpx)
+- Detects technologies (httpx --tech-detect)
 
-Output JSON schema:
+JSON Output Schema:
 {
-    "module": "domain",
     "domain": "<target>",
     "subdomains": [...],
     "alive": [...],
@@ -16,15 +17,16 @@ Output JSON schema:
 
 import subprocess
 import requests
+import json
+import tempfile
 from colorama import Fore, Style, init
 
-# Initialize colorama
 init(autoreset=True)
 
 
-# ----------------------
-# Helper functions
-# ----------------------
+# ---------------------------
+# Subdomain Enumeration
+# ---------------------------
 def run_subfinder(domain):
     """Run Subfinder to enumerate subdomains"""
     try:
@@ -32,7 +34,8 @@ def run_subfinder(domain):
             ["subfinder", "-d", domain, "-silent"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
-        return set(result.stdout.splitlines())
+        subdomains = set(result.stdout.splitlines())
+        return subdomains
     except Exception as e:
         print(Fore.RED + f"[!] Error running subfinder: {e}")
         return set()
@@ -58,45 +61,61 @@ def run_crtsh(domain):
     return subdomains
 
 
+# ---------------------------
+# Alive Subdomain Probing
+# ---------------------------
 def probe_alive(subdomains):
-    """Use httpx to check alive subdomains"""
+    """Check alive subdomains using httpx via temporary file"""
     alive = []
+    if not subdomains:
+        return alive
+
     try:
-        input_data = "\n".join(subdomains).encode()
-        process = subprocess.Popen(
-            ["httpx", "-silent"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-        stdout, _ = process.communicate(input=input_data)
-        alive = stdout.decode().splitlines()
+        with tempfile.NamedTemporaryFile(mode="w+", delete=True) as f:
+            f.write("\n".join(subdomains))
+            f.flush()
+            result = subprocess.run(
+                ["httpx", "-silent", "-list", f.name],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            alive = result.stdout.splitlines()
     except Exception as e:
         print(Fore.RED + f"[!] Error probing alive domains: {e}")
     return alive
 
 
+# ---------------------------
+# Technology Detection
+# ---------------------------
 def run_tech_scans(alive_subdomains):
-    """Run httpx with --tech-detect on alive domains"""
+    """Run httpx with --tech-detect on alive domains using temporary file"""
     results = []
+    if not alive_subdomains:
+        return results
+
     try:
-        input_data = "\n".join(alive_subdomains).encode()
-        process = subprocess.Popen(
-            ["httpx", "-tech-detect", "-silent"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-        stdout, _ = process.communicate(input=input_data)
-        results = stdout.decode().splitlines()
+        with tempfile.NamedTemporaryFile(mode="w+", delete=True) as f:
+            f.write("\n".join(alive_subdomains))
+            f.flush()
+            result = subprocess.run(
+                ["httpx", "-tech-detect", "-silent", "-list", f.name],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            results = result.stdout.splitlines()
     except Exception as e:
         print(Fore.RED + f"[!] Error running tech scans: {e}")
     return results
 
 
-# ----------------------
-# Main pipeline entry
-# ----------------------
-def process(domain):
-    """Main function called by pipeline.py"""
-    safe_domain = domain.replace(".", "-")  # optional safe version
-
+# ---------------------------
+# Main Module Function
+# ---------------------------
+def run(domain, safe_domain=None):
+    """Main entry for pipeline"""
     print(Fore.CYAN + f"\n[+] Starting domain reconnaissance for: {domain}\n")
 
     # 1. Subfinder
@@ -105,7 +124,7 @@ def process(domain):
     print(Fore.GREEN + f"[✓] Found {len(subfinder_results)} unique subdomains with Subfinder")
 
     # 2. crt.sh
-    print(Fore.YELLOW + "[*] Fetching from crt.sh...")
+    print(Fore.YELLOW + "[*] Fetching subdomains from crt.sh...")
     crtsh_results = run_crtsh(domain)
     print(Fore.GREEN + f"[✓] Found {len(crtsh_results)} unique subdomains from crt.sh")
 
@@ -118,21 +137,22 @@ def process(domain):
     alive = probe_alive(all_subdomains)
     print(Fore.GREEN + f"[✓] Found {len(alive)} alive subdomains")
 
-    # 4. Tech scan
+    # 4. Technology detection
     print(Fore.YELLOW + "\n[*] Running technology detection scans...")
     tech_results = run_tech_scans(alive)
     print(Fore.GREEN + f"[✓] Technology fingerprints collected: {len(tech_results)}")
 
-    # Build JSON output
+    # -----------------------
+    # Build JSON Output
+    # -----------------------
     output = {
-        "module": "domain",
         "domain": domain,
         "subdomains": all_subdomains,
         "alive": alive,
         "tech_scans": tech_results
     }
 
-    # Human readable preview
+    # Human-readable preview
     print(Fore.CYAN + "\n=== Summary ===")
     print(Fore.WHITE + f"Total subdomains found: {len(all_subdomains)}")
     print(Fore.WHITE + f"Alive subdomains: {len(alive)}")
