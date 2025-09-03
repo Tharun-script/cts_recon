@@ -12,7 +12,6 @@ import json
 
 init(autoreset=True)
 
-# === CONFIG ===
 API_KEY = "2b19c67a0c195af60bec0829621249eb402eb18bc56464d6b641c780ef01af2c"
 
 # -------------------
@@ -84,8 +83,8 @@ def serpapi_search(query, num=10):
 # -------------------
 # Save results to central {target}_scan.json
 # -------------------
-def save_scan(target, dns_results=None, whois_results=None, bucket_results=None):
-    """Append/update scan results in {target}_scan.json without overwriting other modules"""
+def save_scan(target, bucket_results):
+    """Append/update bucket scan results in {target}_scan.json"""
     filename = f"{target}_scan.json"
     if os.path.exists(filename):
         with open(filename, "r") as f:
@@ -97,49 +96,24 @@ def save_scan(target, dns_results=None, whois_results=None, bucket_results=None)
         data = {}
 
     timestamp = datetime.now().isoformat()
-    if dns_results is not None:
-        data["dns"] = {"timestamp": timestamp, "ips": dns_results}
-    if whois_results is not None:
-        data["whois"] = {"timestamp": timestamp, "results": whois_results}
-    if bucket_results is not None:
-        data["bucket"] = {"timestamp": timestamp, "results": bucket_results}
+    data["bucket"] = {"timestamp": timestamp, "results": bucket_results}
 
     with open(filename, "w") as f:
         json.dump(data, f, indent=4)
 
 # -------------------
-# Main scan for bucket module
+# Main scan function
 # -------------------
 def bucket_scan(domain):
-    print(Fore.CYAN + f"\n[*] Scanning target: {domain}")
+    print(Fore.CYAN + f"\n[*] Scanning S3 buckets for target: {domain}")
 
-    # DNS
-    print(Fore.CYAN + f"[*] Resolving DNS records for {domain}...")
-    ips = get_dns_records(domain)
-    if ips:
-        print(Fore.GREEN + f"[✓] Found {len(ips)} IP(s):")
-        for ip in ips:
-            print(Fore.YELLOW + f"  └─ {ip}")
-    else:
-        print(Fore.RED + "[!] No DNS A records found.")
-
-    # WHOIS
-    whois_results = []
-    if ips:
-        for ip in ips:
-            info = get_whois_info(ip)
-            whois_results.append({"ip": ip, "whois": info})
-            if info:
-                print(Fore.MAGENTA + f"  WHOIS for {ip}: {', '.join(info[:3])}...")
-
-    # S3 Buckets
-    print(Fore.CYAN + f"[*] Scanning S3 buckets for {domain}...")
     s3_query = (
         f'(site:*.s3.amazonaws.com OR site:*.s3-external-1.amazonaws.com '
         f'OR site:*.s3.dualstack.us-east-1.amazonaws.com '
         f'OR site:*.s3.ap-south-1.amazonaws.com) "{domain}"'
     )
     urls = serpapi_search(s3_query)
+
     s3_results = []
     if urls:
         print(Fore.GREEN + f"[✓] Found {len(urls)} possible S3 URLs:")
@@ -162,16 +136,17 @@ def bucket_scan(domain):
     else:
         print(Fore.RED + "[!] No related S3 buckets found.")
 
-    # Save all results
-    save_scan(domain, dns_results=ips, whois_results=whois_results, bucket_results=s3_results)
-    print(Fore.CYAN + f"[*] Scan results saved to {domain}_scan.json")
-    print(Fore.CYAN + f"[*] Bucket scan for {domain} completed.\n")
-    return True
+    save_scan(domain, s3_results)
+    print(Fore.CYAN + f"[*] Bucket scan results saved to {domain}_scan.json\n")
+
+    # Return full scan results for the pipeline
+    return s3_results
 
 # -------------------
 # Pipeline-compatible function
 # -------------------
 def process(domain):
+    """This is what pipeline calls"""
     return bucket_scan(domain)
 
 # -------------------
