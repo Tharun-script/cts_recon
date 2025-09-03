@@ -85,7 +85,7 @@ def serpapi_search(query, num=10):
 # Save results to central {target}_scan.json
 # -------------------
 def save_scan(target, dns_results=None, whois_results=None, bucket_results=None):
-    """Save all scan results to {target}_scan.json"""
+    """Append/update scan results in {target}_scan.json without overwriting other modules"""
     filename = f"{target}_scan.json"
     if os.path.exists(filename):
         with open(filename, "r") as f:
@@ -108,12 +108,12 @@ def save_scan(target, dns_results=None, whois_results=None, bucket_results=None)
         json.dump(data, f, indent=4)
 
 # -------------------
-# Main bucket scan function
+# Main scan for bucket module
 # -------------------
 def bucket_scan(domain):
     print(Fore.CYAN + f"\n[*] Scanning target: {domain}")
 
-    # --- DNS ---
+    # DNS
     print(Fore.CYAN + f"[*] Resolving DNS records for {domain}...")
     ips = get_dns_records(domain)
     if ips:
@@ -123,7 +123,7 @@ def bucket_scan(domain):
     else:
         print(Fore.RED + "[!] No DNS A records found.")
 
-    # --- WHOIS ---
+    # WHOIS
     whois_results = []
     if ips:
         for ip in ips:
@@ -132,7 +132,7 @@ def bucket_scan(domain):
             if info:
                 print(Fore.MAGENTA + f"  WHOIS for {ip}: {', '.join(info[:3])}...")
 
-    # --- S3 Buckets ---
+    # S3 Buckets
     print(Fore.CYAN + f"[*] Scanning S3 buckets for {domain}...")
     s3_query = (
         f'(site:*.s3.amazonaws.com OR site:*.s3-external-1.amazonaws.com '
@@ -162,14 +162,14 @@ def bucket_scan(domain):
     else:
         print(Fore.RED + "[!] No related S3 buckets found.")
 
-    # --- Save everything to JSON ---
+    # Save all results
     save_scan(domain, dns_results=ips, whois_results=whois_results, bucket_results=s3_results)
     print(Fore.CYAN + f"[*] Scan results saved to {domain}_scan.json")
     print(Fore.CYAN + f"[*] Bucket scan for {domain} completed.\n")
     return True
 
 # -------------------
-# Pipeline-compatible entry point
+# Pipeline-compatible function
 # -------------------
 def process(domain):
     return bucket_scan(domain)
