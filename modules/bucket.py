@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import os
+import subprocess
+import re
 from urllib.parse import urlparse
 from datetime import datetime
 from serpapi import GoogleSearch
@@ -8,11 +10,34 @@ from botocore.exceptions import ClientError
 from colorama import Fore, Style, init
 import json
 
-# Initialize colorama
 init(autoreset=True)
 
 # === CONFIG ===
 API_KEY = "2b19c67a0c195af60bec0829621249eb402eb18bc56464d6b641c780ef01af2c"
+
+# -------------------
+# DNS + WHOIS Helpers
+# -------------------
+def get_dns_records(domain):
+    try:
+        result = subprocess.run(
+            ["dig", "+short", domain, "A"],
+            capture_output=True, text=True, check=True
+        )
+        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    except Exception:
+        return []
+
+def get_whois_info(ip):
+    info = []
+    try:
+        result = subprocess.run(["whois", ip], capture_output=True, text=True, check=True)
+        for line in result.stdout.splitlines():
+            if re.search(r"NetRange|CIDR|route", line, re.IGNORECASE):
+                info.append(line.strip())
+    except Exception as e:
+        info.append(f"WHOIS lookup failed: {e}")
+    return info
 
 # -------------------
 # S3 Helpers
@@ -45,9 +70,6 @@ def check_object_write(bucket, key="test_permission_check.txt"):
     except ClientError:
         return False
 
-# -------------------
-# SerpAPI search
-# -------------------
 def serpapi_search(query, num=10):
     params = {"engine": "google", "q": query, "hl": "en", "num": num, "api_key": API_KEY}
     search = GoogleSearch(params)
@@ -60,12 +82,11 @@ def serpapi_search(query, num=10):
     return urls
 
 # -------------------
-# Save results
+# Save results to central {target}_scan.json
 # -------------------
 def save_bucket_scan(target, s3_results):
-    """Save bucket scan results to {target}_scan.json"""
+    """Append bucket scan results to {target}_scan.json"""
     filename = f"{target}_scan.json"
-    # Load existing scan results
     if os.path.exists(filename):
         with open(filename, "r") as f:
             try:
@@ -83,10 +104,10 @@ def save_bucket_scan(target, s3_results):
 
     with open(filename, "w") as f:
         json.dump(data, f, indent=4)
-    print(Fore.CYAN + f"  [*] Bucket scan results saved to {filename}")
+    print(Fore.CYAN + f"[*] Bucket scan results saved to {filename}")
 
 # -------------------
-# Main bucket scan
+# Main bucket scan function
 # -------------------
 def bucket_scan(domain):
     print(Fore.CYAN + f"\n[*] Scanning S3 buckets for target: {domain}")
@@ -114,7 +135,7 @@ def bucket_scan(domain):
                     "write": write
                 })
 
-                # Print results
+                # Print results nicely
                 print(Fore.YELLOW + f"    Bucket: {bucket}")
                 if key:
                     print(Fore.WHITE + f"      Key: {key}")
@@ -122,25 +143,17 @@ def bucket_scan(domain):
     else:
         print(Fore.RED + "  [!] No related S3 buckets found.")
 
-    # Save results
+    # Save results to central {target}_scan.json
     save_bucket_scan(domain, s3_results)
+
+    # Final summary
+    print(Fore.CYAN + f"[*] Bucket scan results saved to {domain}_scan.json")
     print(Fore.CYAN + f"[*] Bucket scan for {domain} completed.\n")
-    return s3_results  # return full info for pipeline
+    return True
 
 # -------------------
-# Pipeline-compatible process function
-# -------------------
-def process(domain):
-    """
-    This function allows the recon pipeline to call:
-        modules.bucket.process(domain)
-    """
-    return bucket_scan(domain)
-
-# -------------------
-# Example standalone usage
+# Example usage
 # -------------------
 if __name__ == "__main__":
-    target_domain = "evil.com"
-    results = process(target_domain)
-    print(Fore.CYAN + f"\n[*] Scan completed. Total buckets found: {len(results)}")
+    target_domain = "cognizant.com"
+    bucket_scan(target_domain)
