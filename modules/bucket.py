@@ -15,18 +15,8 @@ init(autoreset=True)
 # === CONFIG ===
 API_KEY = "2b19c67a0c195af60bec0829621249eb402eb18bc56464d6b641c780ef01af2c"
 
-# -------------------
-# Helpers
-# -------------------
-def write_json(target, module, scan, data):
-    """Write JSON to {target}_{module}_{scan}.json"""
-    safe_target = target.replace("://", "_").replace("/", "_")
-    filename = f"{safe_target}_{module}_{scan}.json"
-    with open(filename, "w") as f:
-        json.dump(data, f, indent=4)
-    print(Fore.CYAN + f"    [*] Report written → {filename}")
-    return filename
 
+    
 # -------------------
 # DNS + WHOIS
 # -------------------
@@ -161,3 +151,4 @@ def process(domain):
 
     print(Fore.CYAN + f"\n[*] Scanning for {domain} completed.\n")
     return True
+
