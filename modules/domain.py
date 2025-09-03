@@ -53,24 +53,46 @@ def run_crtsh(domain, retries=3, delay=5):
     print(Fore.RED + "[!] crt.sh failed after all retries")
     return subdomains
 
-
 def probe_alive(subdomains):
     alive = []
     try:
-        if not subdomains:
-            return alive
         print(Fore.YELLOW + "\n[*] Probing alive subdomains with httpx...")
+
+        if not subdomains:
+            print(Fore.RED + "[!] No subdomains to probe.")
+            return alive
+
         input_data = "\n".join(subdomains).encode()
+
+        # Run httpx with multiple ports, tls-ignore, and verbose
         process = subprocess.Popen(
-            ["httpx", "-silent", "-timeout", "30"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            [
+                "httpx",
+                "-silent",
+                "-ports", "80,443,8080,8443",
+                "-tls-ignore",
+                "-threads", "50"
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
         )
-        stdout, _ = process.communicate(input=input_data)
+
+        stdout, stderr = process.communicate(input=input_data)
+
+        # Decode output
         alive = stdout.decode().splitlines()
-        print(Fore.GREEN + f"[✓] Found {len(alive)} alive subdomains")
+
+        if alive:
+            print(Fore.GREEN + f"[✓] Found {len(alive)} alive subdomains")
+        else:
+            print(Fore.RED + "[!] No alive subdomains found. Check network or firewall settings.")
+
     except Exception as e:
         print(Fore.RED + f"[!] Error probing alive domains: {e}")
+
     return alive
+
 
 
 def run_tech_scans(alive_subdomains):
@@ -149,3 +171,4 @@ def process(domain, safe_domain=None):
 
 # Example usage:
 # process("rmkcet.ac.in")
+
