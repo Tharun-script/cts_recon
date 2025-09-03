@@ -8,6 +8,7 @@ from botocore.exceptions import ClientError
 from colorama import Fore, Style, init
 import json
 
+# Initialize colorama
 init(autoreset=True)
 
 # === CONFIG ===
@@ -44,6 +45,9 @@ def check_object_write(bucket, key="test_permission_check.txt"):
     except ClientError:
         return False
 
+# -------------------
+# SerpAPI search
+# -------------------
 def serpapi_search(query, num=10):
     params = {"engine": "google", "q": query, "hl": "en", "num": num, "api_key": API_KEY}
     search = GoogleSearch(params)
@@ -56,7 +60,7 @@ def serpapi_search(query, num=10):
     return urls
 
 # -------------------
-# Save results to central {target}_scan.json
+# Save results
 # -------------------
 def save_bucket_scan(target, s3_results):
     """Append bucket scan results to {target}_scan.json"""
@@ -83,7 +87,7 @@ def save_bucket_scan(target, s3_results):
     print(Fore.CYAN + f"  [*] Bucket scan results saved to {filename}")
 
 # -------------------
-# Main bucket scan function
+# Main bucket scan
 # -------------------
 def bucket_scan(domain):
     print(Fore.CYAN + f"\n[*] Scanning S3 buckets for target: {domain}")
@@ -119,14 +123,15 @@ def bucket_scan(domain):
     else:
         print(Fore.RED + "  [!] No related S3 buckets found.")
 
-    # Save results to central {target}_scan.json
+    # Save results
     save_bucket_scan(domain, s3_results)
     print(Fore.CYAN + f"[*] Bucket scan for {domain} completed.\n")
-    return True
+    return s3_results  # <-- returns full extracted info
 
 # -------------------
-# Example usage
+# Entry point
 # -------------------
 if __name__ == "__main__":
     target_domain = "evil.com"
-    bucket_scan(target_domain)
+    results = bucket_scan(target_domain)
+    print(Fore.CYAN + f"\n[*] Scan completed. Total buckets found: {len(results)}")
