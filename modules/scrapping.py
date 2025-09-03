@@ -45,11 +45,11 @@ BASE_PATTERNS = {
     "GitHub Token": r"(ghp|gho|ghu|ghs|ghr)_[0-9a-zA-Z]{36}",
     "AWS Access Key ID": r"AKIA[0-9A-Z]{16}",
     "Google API Key": r"AIza[0-9A-Za-z\-_]{35}",
-    "Slack Token": r"xox[baprs]-([0-9a-zA-Z-]{10,48})",
+    "Slack Token": r"xox[baprs]-[0-9a-zA-Z\-]{10,48}",
     "Private Key": r"-----BEGIN (?:RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY-----[\s\S]+?-----END (?:RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY-----",
     "Phone Number": PHONE_REGEX,
-    "Username": r"(?:username|user|uname|usr)\s*[:=]\s*[\"']?([a-zA-Z0-9._-]{3,50})[\"']?",
-    "Password": r"(?:password|passwd|pwd|pass)\s*[:=]\s*[\"']?([a-zA-Z0-9!@#$%^&*()_+=\-]{4,50})[\"']?",
+    "Username": r"(?:username|user|uname|usr)\s*[:=]\s*[\"']?([a-zA-Z0-9._\-]{3,50})[\"']?",
+    "Password": r"(?:password|passwd|pwd|pass)\s*[:=]\s*[\"']?([a-zA-Z0-9!@#$%^&*()_+=_\-]{4,50})[\"']?",
 }
 
 def github_search(query, page=1, per_page=20):
@@ -170,4 +170,45 @@ def process(domain: str):
         all_phones.update(phones)
 
     # 3. GitHub dorks
-    print(Fore.YELLOW + "[*] Searchin*]()
+    print(Fore.YELLOW + "[*] Searching GitHub code...")
+    for dork in DORKS:
+        query = dork.format(domain=domain, keyword=keyword)
+        results = github_search(query)
+        if not results or "items" not in results:
+            continue
+        for item in results["items"]:
+            file_url = item["html_url"].replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
+            try:
+                response = requests.get(file_url, timeout=10)
+                if response.status_code == 200:
+                    matches = extract_patterns(response.text, domain)
+                    for k, v in matches.items():
+                        if k == "Email":
+                            all_emails.update(v)
+                        elif k == "Phone Number":
+                            all_phones.update(v)
+                        elif k == "Username":
+                            all_usernames.update(v)
+                        elif k == "Password":
+                            all_passwords.update(v)
+                        else:
+                            found_secrets.append({k: v})
+            except:
+                continue
+
+    # Print results
+    print(Fore.CYAN + "\n[+] Scan Results:")
+    print(Fore.GREEN + f"Emails: {list(all_emails)}")
+    print(Fore.GREEN + f"Phones: {list(all_phones)}")
+    print(Fore.GREEN + f"Usernames: {list(all_usernames)}")
+    print(Fore.GREEN + f"Passwords: {list(all_passwords)}")
+    print(Fore.RED + f"Secrets: {json.dumps(found_secrets, indent=2)}")
+
+    # Return JSON-style results
+    return {
+        "emails": list(all_emails),
+        "phones": list(all_phones),
+        "usernames": list(all_usernames),
+        "passwords": list(all_passwords),
+        "secrets": found_secrets,
+    }
