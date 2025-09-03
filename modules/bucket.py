@@ -152,8 +152,18 @@ def bucket_scan(domain):
     return True
 
 # -------------------
-# Example usage
+# Pipeline-compatible entry point
+# -------------------
+def process(domain):
+    """
+    Standard entry point for pipeline.
+    Calls the main bucket_scan function.
+    """
+    return bucket_scan(domain)
+
+# -------------------
+# Example usage (for testing)
 # -------------------
 if __name__ == "__main__":
     target_domain = "cognizant.com"
-    bucket_scan(target_domain)
+    process(target_domain)
