@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 import subprocess
 import re
-import json
-import os
 from urllib.parse import urlparse
 from datetime import datetime
 from serpapi import GoogleSearch
@@ -15,8 +13,6 @@ init(autoreset=True)
 # === CONFIG ===
 API_KEY = "2b19c67a0c195af60bec0829621249eb402eb18bc56464d6b641c780ef01af2c"
 
-
-    
 # -------------------
 # DNS + WHOIS
 # -------------------
@@ -88,14 +84,11 @@ def serpapi_search(query, num=10):
 # -------------------
 def process(domain):
     timestamp = datetime.now().isoformat()
-
     print(Fore.CYAN + f"[*] Scanning target {domain}...")
 
     # ---------------- DNS ----------------
     print(Fore.CYAN + f"    [*] Resolving DNS records for {domain}...")
     ips = get_dns_records(domain)
-    dns_report = {"target": domain, "timestamp": timestamp, "ips": ips}
-    write_json(domain, "dns", "scan", dns_report)
 
     if ips:
         print(Fore.GREEN + f"    [✓] Found {len(ips)} IP(s):")
@@ -105,14 +98,10 @@ def process(domain):
         print(Fore.RED + "    [!] No DNS A records found.")
 
     # ---------------- WHOIS ----------------
-    whois_results = []
     for ip in ips:
         whois_info = get_whois_info(ip)
-        whois_results.append({"ip": ip, "whois": whois_info})
         if whois_info:
             print(Fore.MAGENTA + f"       WHOIS for {ip}: {', '.join(whois_info[:3])}...")
-    whois_report = {"target": domain, "timestamp": timestamp, "whois": whois_results}
-    write_json(domain, "whois", "scan", whois_report)
 
     # ---------------- S3 Buckets ----------------
     print(Fore.CYAN + f"    [*] Searching for S3 buckets mentioning {domain}...")
@@ -123,7 +112,6 @@ def process(domain):
     )
     urls = serpapi_search(s3_query)
 
-    s3_results = []
     if urls:
         print(Fore.GREEN + f"    [✓] Found {len(urls)} possible S3 URLs:")
         for url in urls:
@@ -131,14 +119,6 @@ def process(domain):
             if bucket:
                 read = check_object_read(bucket, key) if key else False
                 write = check_object_write(bucket)
-                s3_results.append({
-                    "url": url,
-                    "bucket": bucket,
-                    "key": key,
-                    "read": read,
-                    "write": write
-                })
-
                 print(Fore.YELLOW + f"       └─ Bucket: {bucket}")
                 if key:
                     print(Fore.WHITE + f"          Key: {key}")
@@ -146,9 +126,5 @@ def process(domain):
     else:
         print(Fore.RED + "    [!] No related S3 buckets found.")
 
-    s3_report = {"target": domain, "timestamp": timestamp, "s3_buckets": s3_results}
-    write_json(domain, "bucket", "scan", s3_report)
-
     print(Fore.CYAN + f"\n[*] Scanning for {domain} completed.\n")
     return True
-
