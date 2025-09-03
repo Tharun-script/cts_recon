@@ -9,6 +9,7 @@ from colorama import Fore, Style, init
 init(autoreset=True)
 
 
+# ------------------- Helpers -------------------
 def run_subfinder(domain):
     try:
         print(Fore.YELLOW + "[*] Running Subfinder...")
@@ -72,7 +73,7 @@ def probe_alive(subdomains):
 
 
 def run_tech_scans(alive_subdomains):
-    results = []
+    techstack = []
     try:
         print(Fore.YELLOW + "\n[*] Running technology detection scans with httpx...")
         input_data = "\n".join(alive_subdomains).encode()
@@ -81,79 +82,72 @@ def run_tech_scans(alive_subdomains):
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
         stdout, _ = process.communicate(input=input_data)
-        results = stdout.decode().splitlines()
-        print(Fore.GREEN + f"[✓] Technology fingerprints collected: {len(results)}")
+        techstack = stdout.decode().splitlines()
+        print(Fore.GREEN + f"[✓] Technology fingerprints collected: {len(techstack)}")
     except Exception as e:
         print(Fore.RED + f"[!] Error running tech scans: {e}")
-    return results
+    return techstack
 
 
+# ------------------- JSON Save Helper -------------------
+def save_json(data, filename):
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+        print(Fore.CYAN + f"[✓] Saved {filename}")
+    except Exception as e:
+        print(Fore.RED + f"[!] Error saving {filename}: {e}")
+
+
+# ------------------- Main Run -------------------
 def run(domain, safe_domain):
     print(Fore.CYAN + f"\n[+] Starting domain reconnaissance for: {domain}\n")
 
-    # 1. Subfinder
+    # 1️⃣ Subdomain enumeration
     subfinder_results = run_subfinder(safe_domain)
-
-    # 2. crt.sh
     crtsh_results = run_crtsh(safe_domain)
-
-    # Combine
     all_subdomains = sorted(subfinder_results.union(crtsh_results))
     print(Fore.CYAN + f"\n[+] Total unique subdomains: {len(all_subdomains)}")
 
-    # 3. Probe
+    # 2️⃣ Probe alive
     alive = probe_alive(all_subdomains)
 
-    # 4. Tech scans
-    tech_results = run_tech_scans(alive)
+    # 3️⃣ Tech stack detection
+    techstack = run_tech_scans(alive)
 
-    # Build JSON output
+    # 4️⃣ Prepare uniform JSON structure
+    timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    base_data = {"target": domain, "timestamp": timestamp}
+
+    # Save each scan individually
+    safe_domain_clean = safe_domain.replace("/", "_")
+    save_json({**base_data, "subdomains": all_subdomains}, f"{safe_domain_clean}_subdomains.json")
+    save_json({**base_data, "alive_subdomains": alive}, f"{safe_domain_clean}_alive_subdomains.json")
+    save_json({**base_data, "techstack": techstack}, f"{safe_domain_clean}_techstack.json")
+
+    # 5️⃣ Combined output for pipeline
     output = {
-        "domain": domain,
-        "subdomains": all_subdomains,
-        "alive": alive,
-        "tech_scans": tech_results
+        "target": domain,
+        "timestamp": timestamp,
+        "data": {
+            "subdomains": all_subdomains,
+            "alive_subdomains": alive,
+            "techstack": techstack
+        }
     }
 
-    # Ensure output folder exists
-    save_path = os.path.join(os.getcwd(), f"{safe_domain}_recon.json")
-    try:
-        with open(save_path, "w", encoding="utf-8") as f:
-            json.dump(output, f, indent=4)
-        print(Fore.CYAN + f"\n[✓] Results saved to {save_path}")
-    except Exception as e:
-        print(Fore.RED + f"[!] Error saving JSON file: {e}")
-
-    # Human summary
+    # Print summary
     print(Fore.CYAN + "\n=== Summary ===")
     print(Fore.WHITE + f"Total subdomains found: {len(all_subdomains)}")
-    if all_subdomains:
-        print(Fore.GREEN + "\n[All Subdomains]")
-        for sub in all_subdomains:
-            print(Fore.WHITE + f"  └─ {sub}")
-
-    print(Fore.WHITE + f"\nAlive subdomains: {len(alive)}")
-    if alive:
-        print(Fore.GREEN + "\n[Alive Domains]")
-        for sub in alive:
-            print(Fore.WHITE + f"  └─ {sub}")
-
-    if tech_results:
-        print(Fore.GREEN + "\n[Technology Detection]")
-        for t in tech_results:
-            print(Fore.WHITE + f"  └─ {t}")
-
+    print(Fore.WHITE + f"Alive subdomains: {len(alive)}")
+    print(Fore.WHITE + f"Tech fingerprints: {len(techstack)}")
     print(Style.BRIGHT + Fore.CYAN + "\n[✓] Domain reconnaissance completed.\n")
+
     return output
 
 
-# 🔑 Entry point for pipeline
+# ------------------- Pipeline Entry -------------------
 def process(domain, safe_domain=None):
     if not safe_domain:
-        # Normalize domain → strip http/https and any path
         safe_domain = domain.replace("http://", "").replace("https://", "").split("/")[0]
     return run(domain, safe_domain)
-
-
-# Example run (uncomment for direct execution)
-# process("cognizant.com")
