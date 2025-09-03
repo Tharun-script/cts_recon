@@ -83,37 +83,60 @@ def serpapi_search(query, num=10):
 # -------------------
 # Save results to central {target}_scan.json
 # -------------------
-def save_scan(target, bucket_results):
-    """Append/update bucket scan results in {target}_scan.json"""
+def save_scan(target, data):
+    """Save full scan results in {target}_scan.json"""
     filename = f"{target}_scan.json"
     if os.path.exists(filename):
         with open(filename, "r") as f:
             try:
-                data = json.load(f)
+                old_data = json.load(f)
             except json.JSONDecodeError:
-                data = {}
+                old_data = {}
     else:
-        data = {}
+        old_data = {}
 
-    timestamp = datetime.now().isoformat()
-    data["bucket"] = {"timestamp": timestamp, "results": bucket_results}
+    # Merge new data into existing JSON
+    old_data.update(data)
 
     with open(filename, "w") as f:
-        json.dump(data, f, indent=4)
+        json.dump(old_data, f, indent=4)
+    print(Fore.CYAN + f"[*] Scan results saved to {filename}")
 
 # -------------------
-# Main scan function
+# Main process
 # -------------------
 def bucket_scan(domain):
-    print(Fore.CYAN + f"\n[*] Scanning S3 buckets for target: {domain}")
+    timestamp = datetime.now().isoformat()
+    full_data = {"timestamp": timestamp}
 
+    # -------- DNS Scan --------
+    print(Fore.CYAN + f"[*] Resolving DNS records for {domain}...")
+    ips = get_dns_records(domain)
+    full_data["domain"] = {"domain": domain, "dns": ips}
+    if ips:
+        print(Fore.GREEN + f"[✓] DNS A records:")
+        for ip in ips:
+            print(Fore.YELLOW + f"  {ip}")
+    else:
+        print(Fore.RED + "[!] No DNS A records found.")
+
+    # -------- WHOIS Scan --------
+    whois_results = []
+    for ip in ips:
+        info = get_whois_info(ip)
+        whois_results.append({"ip": ip, "whois": info})
+        if info:
+            print(Fore.MAGENTA + f"  WHOIS for {ip}: {', '.join(info[:3])}...")
+    full_data["whois"] = whois_results
+
+    # -------- S3 Scan --------
+    print(Fore.CYAN + f"[*] Searching for S3 buckets mentioning {domain}...")
     s3_query = (
         f'(site:*.s3.amazonaws.com OR site:*.s3-external-1.amazonaws.com '
         f'OR site:*.s3.dualstack.us-east-1.amazonaws.com '
         f'OR site:*.s3.ap-south-1.amazonaws.com) "{domain}"'
     )
     urls = serpapi_search(s3_query)
-
     s3_results = []
     if urls:
         print(Fore.GREEN + f"[✓] Found {len(urls)} possible S3 URLs:")
@@ -135,12 +158,13 @@ def bucket_scan(domain):
                 print(Fore.GREEN + f"    Readable: {read}, Writable: {write}")
     else:
         print(Fore.RED + "[!] No related S3 buckets found.")
+    full_data["bucket"] = s3_results
 
-    save_scan(domain, s3_results)
-    print(Fore.CYAN + f"[*] Bucket scan results saved to {domain}_scan.json\n")
+    # -------- Save full data --------
+    save_scan(domain, full_data)
+    print(Fore.CYAN + f"[*] Bucket module scan for {domain} completed.\n")
 
-    # Return full scan results for the pipeline
-    return s3_results
+    return full_data
 
 # -------------------
 # Pipeline-compatible function
