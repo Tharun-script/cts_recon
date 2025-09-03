@@ -63,7 +63,7 @@ def serpapi_search(query, num=10):
 # Save results
 # -------------------
 def save_bucket_scan(target, s3_results):
-    """Append bucket scan results to {target}_scan.json"""
+    """Save bucket scan results to {target}_scan.json"""
     filename = f"{target}_scan.json"
     # Load existing scan results
     if os.path.exists(filename):
@@ -81,7 +81,6 @@ def save_bucket_scan(target, s3_results):
         "results": s3_results
     }
 
-    # Write back to the same file
     with open(filename, "w") as f:
         json.dump(data, f, indent=4)
     print(Fore.CYAN + f"  [*] Bucket scan results saved to {filename}")
@@ -126,12 +125,22 @@ def bucket_scan(domain):
     # Save results
     save_bucket_scan(domain, s3_results)
     print(Fore.CYAN + f"[*] Bucket scan for {domain} completed.\n")
-    return s3_results  # <-- returns full extracted info
+    return s3_results  # return full info for pipeline
 
 # -------------------
-# Entry point
+# Pipeline-compatible process function
+# -------------------
+def process(domain):
+    """
+    This function allows the recon pipeline to call:
+        modules.bucket.process(domain)
+    """
+    return bucket_scan(domain)
+
+# -------------------
+# Example standalone usage
 # -------------------
 if __name__ == "__main__":
     target_domain = "evil.com"
-    results = bucket_scan(target_domain)
+    results = process(target_domain)
     print(Fore.CYAN + f"\n[*] Scan completed. Total buckets found: {len(results)}")
