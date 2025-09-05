@@ -1,79 +1,147 @@
 #!/usr/bin/env python3
+import socket
+import subprocess
+import importlib
 import os
+import sys
 import json
-import re
+from datetime import datetime
+from colorama import Fore, Style, init
 
-def generate_report(domain):
-    """Read all module JSONs and create final reports with alive subdomains"""
+# -------- Initialize Colorama --------
+init(autoreset=True)
+
+# -------- Global scan collector --------
+scan_data = {}
+
+# -------- CLI Helpers --------
+def status(msg):
+    print(Fore.LIGHTCYAN_EX + "[*] " + Style.RESET_ALL + msg)
+
+def success(msg):
+    print(Fore.LIGHTGREEN_EX + "[+] " + Style.RESET_ALL + msg)
+
+def warning(msg):
+    print(Fore.LIGHTYELLOW_EX + "[!] " + Style.RESET_ALL + msg)
+
+def error(msg):
+    print(Fore.LIGHTRED_EX + "[-] " + Style.RESET_ALL + msg)
+
+# -------- Classify Input --------
+def classify_input(input_string):
+    """Check if input is IP or Domain"""
+    try:
+        socket.inet_aton(input_string)
+        return 'IP'
+    except socket.error:
+        return 'DOMAIN'
+
+# -------- Convert IP to Domain --------
+def ip_to_domain(ip):
+    """Convert IP to domain using nslookup"""
+    try:
+        status(f"Resolving IP {ip} to domain...")
+        result = subprocess.run(['nslookup', ip], capture_output=True, text=True)
+        for line in result.stdout.splitlines():
+            if "name =" in line:
+                domain = line.split(" = ")[1].strip()
+                success(f"Resolved to {domain}")
+                return domain
+        warning("No domain found for this IP.")
+        return None
+    except Exception as e:
+        error(f"nslookup error: {e}")
+        return None
+
+# -------- Save Master Scan File --------
+def save_scan_file(domain, scan_type):
     safe_domain = domain.replace("/", "_").replace("\\", "_")
-    project_root = os.path.abspath(os.path.dirname(__file__))
-    report_dir = os.path.join(project_root, f"{safe_domain}reports")
+    filename = f"{safe_domain}_lite.json" if scan_type == "lite" else f"{safe_domain}_deep.json"
 
-    final_txt_path = os.path.join(report_dir, f"{safe_domain}_final.txt")
-    normalized_json_path = os.path.join(report_dir, f"{safe_domain}_normalized.json")
+    scan_data["target"] = domain
+    scan_data["scan_type"] = scan_type
+    scan_data["timestamp"] = datetime.utcnow().isoformat()
 
-    combined_data = {}
-    human_output = []
+    try:
+        with open(filename, "w") as f:
+            json.dump(scan_data, f, indent=4)
+        success(f"Scan data saved → {filename}")
+    except Exception as e:
+        error(f"Failed to save scan file: {e}")
+        return None
 
-    # Initialize normalized with correct structure
-    normalized = {
-        "ip": [],
-        "email": [],
-        "domains": [domain],
-        "subdomain": [],
-        "alive_subdomain": []   # ✅ new key
-    }
+    # Run report only for lite scans
+    if scan_type == "lite":
+        try:
+            status(f"Generating SPF report for {domain}...")
+            subprocess.run([sys.executable, "report.py", filename], check=True)
+        except Exception as e:
+            error(f"Could not run report.py: {e}")
 
-    if not os.path.isdir(report_dir):
-        print(f"[!] No reports found for {domain}")
+    return filename
+
+# -------- Dynamic Module Loader --------
+def route_to_modules(domain, modules_dir):
+    if not os.path.isdir(modules_dir):
+        error(f"Modules directory not found: {modules_dir}")
         return
 
-    # Order matters for consistent output
-    order = ["domain.json", "shodan.json", "scrapping.json", "bucket.json", f"{safe_domain}_recon.json"]
+    for file in sorted(os.listdir(modules_dir)):
+        if file.endswith(".py") and not file.startswith("__"):
+            module_basename = file[:-3]
+            module_name = f"{os.path.basename(modules_dir)}.{module_basename}"
 
-    for file in order:
-        path = os.path.join(report_dir, file)
-        if os.path.isfile(path):
-            with open(path) as f:
-                data = json.load(f)
-                combined_data[file] = data
-                human_output.append(f"\n=== {file} ===\n{json.dumps(data, indent=4)}")
+            try:
+                module = importlib.import_module(module_name)
+                importlib.reload(module)
 
-                # Normalize via regex
-                text = json.dumps(data)
+                if hasattr(module, "process"):
+                    status(f"Running {module_name}...")
+                    result = module.process(domain)
+                    scan_data[module_basename] = result  
+                    success(f"{module_name} completed")
+                else:
+                    warning(f"{module_name} has no process(domain) function.")
+            except Exception as e:
+                error(f"{module_basename} failed: {e}")
 
-                # Extract IPs and Emails
-                normalized["ip"].extend(re.findall(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", text))
-                normalized["email"].extend(
-                    re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
-                )
+# -------- Main Pipeline --------
+def pipeline(input_string, scan_type="deep"):
+    input_type = classify_input(input_string)
+    status(f"Input classified as: {input_type}")
 
-                # Extract subdomains (ending with target domain but not equal)
-                found_subs = [
-                    d for d in re.findall(r"\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b", text)
-                    if d.endswith(domain) and d != domain
-                ]
-                normalized["subdomain"].extend(found_subs)
+    if input_type == 'IP':
+        domain = ip_to_domain(input_string)
+        if not domain:
+            error("Exiting.")
+            return
+    else:
+        domain = input_string
 
-                # ✅ Special case: extract alive subdomains from recon JSON
-                if file.endswith("_recon.json"):
-                    if "alive" in data:
-                        normalized["alive_subdomain"].extend(data["alive"])
+    print("\nTarget:", Fore.LIGHTGREEN_EX + domain + Style.RESET_ALL)
+    print("Scan Type:", Fore.LIGHTYELLOW_EX + scan_type.upper() + Style.RESET_ALL)
+    print("-" * 50)
 
-    # Deduplicate lists
-    normalized["ip"] = sorted(set(normalized["ip"]))
-    normalized["email"] = sorted(set(normalized["email"]))
-    normalized["subdomain"] = sorted(set(normalized["subdomain"]))
-    normalized["alive_subdomain"] = sorted(set(normalized["alive_subdomain"]))
+    # Choose modules directory
+    modules_dir = os.path.join(os.path.dirname(__file__), "litemodules" if scan_type == "lite" else "modules")
 
-    # Write human-readable TXT
-    with open(final_txt_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(human_output))
+    # Run all modules
+    route_to_modules(domain, modules_dir)
 
-    # Write normalized JSON
-    with open(normalized_json_path, "w", encoding="utf-8") as f:
-        json.dump(normalized, f, indent=4)
+    # Save scan file
+    save_scan_file(domain, scan_type)
 
-    print(f"\n[✓] Reports generated:")
-    print(f"    → {final_txt_path}")
-    print(f"    → {normalized_json_path}")
+# -------- Entry Point --------
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        user_input = sys.argv[1]
+    else:
+        user_input = input("Enter domain or IP: ").strip()
+
+    print("\nSelect Scan Type:")
+    print("  1) Lite Scan  (fast)")
+    print("  2) Deep Scan  (detailed)")
+    choice = input("Choice (1/2): ").strip()
+
+    scan_type = "lite" if choice == "1" else "deep"
+    pipeline(user_input, scan_type)
