@@ -6,15 +6,32 @@ import os
 import sys
 import json
 from datetime import datetime
+from colorama import Fore, Style, init
+
+# -------- Initialize Colorama --------
+init(autoreset=True)
 
 # -------- Global scan collector --------
 scan_data = {}
+
+# -------- CLI Helpers --------
+def status(msg):
+    print(Fore.LIGHTCYAN_EX + "[*] " + Style.RESET_ALL + msg)
+
+def success(msg):
+    print(Fore.LIGHTGREEN_EX + "[+] " + Style.RESET_ALL + msg)
+
+def warning(msg):
+    print(Fore.LIGHTYELLOW_EX + "[!] " + Style.RESET_ALL + msg)
+
+def error(msg):
+    print(Fore.LIGHTRED_EX + "[-] " + Style.RESET_ALL + msg)
 
 # -------- Classify Input --------
 def classify_input(input_string):
     """Check if input is IP or Domain"""
     try:
-        socket.inet_aton(input_string)  # valid IPv4?
+        socket.inet_aton(input_string)
         return 'IP'
     except socket.error:
         return 'DOMAIN'
@@ -23,89 +40,96 @@ def classify_input(input_string):
 def ip_to_domain(ip):
     """Convert IP to domain using nslookup"""
     try:
+        status(f"Resolving IP {ip} to domain...")
         result = subprocess.run(['nslookup', ip], capture_output=True, text=True)
         for line in result.stdout.splitlines():
             if "name =" in line:
-                return line.split(" = ")[1].strip()
+                domain = line.split(" = ")[1].strip()
+                success(f"Resolved to {domain}")
+                return domain
+        warning("No domain found for this IP.")
         return None
     except Exception as e:
-        print(f"Error during nslookup: {e}")
+        error(f"nslookup error: {e}")
         return None
 
 # -------- Save Master Scan File --------
-def save_scan_file(domain):
-    """
-    Write all collected results into one scan file:
-      <target>_scan.json
-    """
+def save_scan_file(domain, scan_type):
     safe_domain = domain.replace("/", "_").replace("\\", "_")
-    filename = f"{safe_domain}_scan.json"
+    filename = f"{safe_domain}_lite.json" if scan_type == "lite" else f"{safe_domain}_deep.json"
+
     scan_data["target"] = domain
+    scan_data["scan_type"] = scan_type
     scan_data["timestamp"] = datetime.utcnow().isoformat()
 
     try:
         with open(filename, "w") as f:
             json.dump(scan_data, f, indent=4)
-        print(f"\n[✓] Final scan file saved → {filename}")
+        success(f"Scan data saved → {filename}")
     except Exception as e:
-        print(f"[!] Failed to save scan file: {e}")
+        error(f"Failed to save scan file: {e}")
+        return None
+
+    # Run report only for lite scans
+    if scan_type == "lite":
+        try:
+            status(f"Generating SPF report for {domain}...")
+            subprocess.run([sys.executable, "report.py", filename], check=True)
+        except Exception as e:
+            error(f"Could not run report.py: {e}")
+
+    return filename
 
 # -------- Dynamic Module Loader --------
-def route_to_modules(domain):
-    """Automatically load and run all modules in modules/ folder"""
-    modules_dir = os.path.join(os.path.dirname(__file__), "modules")
-
+def route_to_modules(domain, modules_dir):
     if not os.path.isdir(modules_dir):
-        print(f"[!] Modules directory not found: {modules_dir}")
+        error(f"Modules directory not found: {modules_dir}")
         return
 
     for file in sorted(os.listdir(modules_dir)):
         if file.endswith(".py") and not file.startswith("__"):
             module_basename = file[:-3]
+            module_name = f"{os.path.basename(modules_dir)}.{module_basename}"
 
             try:
-                if __package__:
-                    module_name = f"{__package__}.modules.{module_basename}"
-                else:
-                    module_name = f"modules.{module_basename}"
-
                 module = importlib.import_module(module_name)
                 importlib.reload(module)
 
                 if hasattr(module, "process"):
-                    print(f"\n[+] Running {module_name}...")
+                    status(f"Running {module_name}...")
                     result = module.process(domain)
-
-                    # store each module's result into scan_data
                     scan_data[module_basename] = result  
-
-                    print(f"[✓] {module_name} finished")
+                    success(f"{module_name} completed")
                 else:
-                    print(f"[!] {module_name} has no process(domain) function.")
+                    warning(f"{module_name} has no process(domain) function.")
             except Exception as e:
-                print(f"[!] Error running {module_basename}: {e}")
+                error(f"{module_basename} failed: {e}")
 
 # -------- Main Pipeline --------
-def pipeline(input_string):
+def pipeline(input_string, scan_type="deep"):
     input_type = classify_input(input_string)
-    print(f"\n[*] Input classified as: {input_type}")
+    status(f"Input classified as: {input_type}")
 
     if input_type == 'IP':
-        print(f"[*] Converting IP {input_string} to domain...")
         domain = ip_to_domain(input_string)
-        if domain:
-            print(f"[✓] IP converted to domain: {domain}")
-        else:
-            print("[!] Could not resolve IP to domain. Exiting.")
+        if not domain:
+            error("Exiting.")
             return
     else:
         domain = input_string
 
-    # Run all modules
-    route_to_modules(domain)
+    print("\nTarget:", Fore.LIGHTGREEN_EX + domain + Style.RESET_ALL)
+    print("Scan Type:", Fore.LIGHTYELLOW_EX + scan_type.upper() + Style.RESET_ALL)
+    print("-" * 50)
 
-    # Save final combined scan file
-    save_scan_file(domain)
+    # Choose modules directory
+    modules_dir = os.path.join(os.path.dirname(__file__), "litemodules" if scan_type == "lite" else "modules")
+
+    # Run all modules
+    route_to_modules(domain, modules_dir)
+
+    # Save scan file
+    save_scan_file(domain, scan_type)
 
 # -------- Entry Point --------
 if __name__ == "__main__":
@@ -114,4 +138,10 @@ if __name__ == "__main__":
     else:
         user_input = input("Enter domain or IP: ").strip()
 
-    pipeline(user_input)
+    print("\nSelect Scan Type:")
+    print("  1) Lite Scan  (fast)")
+    print("  2) Deep Scan  (detailed)")
+    choice = input("Choice (1/2): ").strip()
+
+    scan_type = "lite" if choice == "1" else "deep"
+    pipeline(user_input, scan_type)
