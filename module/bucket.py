@@ -158,7 +158,7 @@ def bucket_scan(domain):
                 print(Fore.GREEN + f"    Readable: {read}, Writable: {write}")
     else:
         print(Fore.RED + "[!] No related S3 buckets found.")
-    full_data["bucket"] = s3_results
+    full_data["Sbucket"] = s3_results
 
     # -------- Save full data --------
     save_scan(domain, full_data)
@@ -179,3 +179,4 @@ def process(domain):
 if __name__ == "__main__":
     target_domain = "evil.com"
     process(target_domain)
+
