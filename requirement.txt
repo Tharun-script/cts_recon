@@ -4,5 +4,4 @@ beautifulsoup4
 shodan
 boto3
 google-search-results
-builtwith
 dnspython
