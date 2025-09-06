@@ -7,6 +7,7 @@
 -> go to /usr/share/spiderfoot/modules
 -> sudo nano sfp_jsonimport.py
 -> paste
+```
 import os
 import json
 from spiderfoot import SpiderFootEvent, SpiderFootPlugin
@@ -109,7 +110,7 @@ class sfp_jsonimport(SpiderFootPlugin):
             self.sf.info(f"Imported technology: {tech}")
 
         self.sf.info("✅ JSON Import completed successfully.")
-
+```
 -> copy the path of the project and add /{target}_lite.json
 example json_path = f"/home/kali/cts_recon/{target}_spf.json"
 
