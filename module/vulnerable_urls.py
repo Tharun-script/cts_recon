@@ -1,30 +1,40 @@
-import subprocess
-import json
+#!/usr/bin/env python3
 import os
+import json
+import subprocess
+from colorama import init, Fore, Style
 
-# Vulnerability-related GF patterns only
-VULN_PATTERNS = [
-    "xss", "domxss", "sqli", "sqli-error", "lfi",
-    "rce", "rce-2", "redirect", "ssrf", "ssti",
-    "idor", "xxe", "xpath"
+# ==============================
+# CONFIG
+# ==============================
+GF_PATTERNS = [
+    "xss", "ssrf", "sqli", "rce", "redirect", "lfi", "ssti",
+    "idor", "rfi"
 ]
 
+# ==============================
+# Run gau + gf
+# ==============================
 def run_gau(domain):
-    """Fetch URLs using gau"""
+    """Run gau to fetch URLs for a domain"""
+    print(Fore.LIGHTBLUE_EX + f"\n[*] Running gau for {domain} ...")
     try:
         result = subprocess.run(
-            ["gau", domain],
+            ["gau", "--subs", domain],
             capture_output=True,
             text=True,
             check=True
         )
-        return result.stdout.splitlines()
+        urls = list(set(result.stdout.splitlines()))
+        print(Fore.LIGHTGREEN_EX + f"[+] Found {len(urls)} URLs from gau")
+        return urls
     except subprocess.CalledProcessError as e:
-        print(f"[!] Error running gau: {e}")
+        print(Fore.LIGHTYELLOW_EX + f"[!] gau failed: {e}")
         return []
 
-def run_gf(pattern, urls):
-    """Run gf pattern on given URLs"""
+
+def run_gf(urls, pattern):
+    """Run gf pattern filter on a list of URLs"""
     try:
         proc = subprocess.Popen(
             ["gf", pattern],
@@ -33,38 +43,52 @@ def run_gf(pattern, urls):
             stderr=subprocess.PIPE,
             text=True
         )
-        output, _ = proc.communicate("\n".join(urls))
-        return output.splitlines() if output else []
+        stdout, _ = proc.communicate("\n".join(urls))
+        return stdout.splitlines() if stdout else []
     except Exception as e:
-        print(f"[!] Error running gf {pattern}: {e}")
+        print(Fore.LIGHTYELLOW_EX + f"[!] gf {pattern} failed: {e}")
         return []
 
-def main():
-    domain = input("Enter domain to scan (e.g., example.com): ").strip()
-    if not domain:
-        print("Domain is required!")
-        return
 
-    print(f"\n[+] Fetching URLs for {domain} using gau...")
+def process(domain):
+    """Pipeline hook for gau + gf"""
+    all_results = {}
     urls = run_gau(domain)
 
     if not urls:
-        print("[!] No URLs found with gau.")
-        return
+        return {"gau_urls": [], "gf_results": {}}
 
-    results = {}
-    for pattern in VULN_PATTERNS:
-        print(f"[+] Running gf pattern: {pattern}")
-        matches = run_gf(pattern, urls)
-        if matches:
-            results[f"gf_{pattern}"] = matches
+    # Save raw gau output
+    all_results["gau_urls"] = urls
 
-    # Save results to JSON
-    file_path = f"{domain}_vuln_gau_gf.json"
+    # Run gf filters
+    gf_results = {}
+    for pattern in GF_PATTERNS:
+        print(Fore.LIGHTCYAN_EX + f"[+] Running gf {pattern} ...")
+        filtered = run_gf(urls, pattern)
+        gf_results[pattern] = filtered
+        print(Fore.LIGHTYELLOW_EX + f"    Found {len(filtered)} {pattern} URLs")
+
+    all_results["gf_results"] = gf_results
+    return all_results
+
+
+# ==============================
+# CLI Mode
+# ==============================
+if __name__ == "__main__":
+    init()
+    domain = input(Fore.LIGHTBLUE_EX + "\nEnter the target domain (e.g., example.com): ").strip()
+    if not domain:
+        print(Fore.LIGHTYELLOW_EX + "Target domain required. Exiting.")
+        exit()
+
+    print(Style.BRIGHT + Fore.LIGHTBLUE_EX + f"\nProcessing domain: {domain}")
+    results = process(domain)
+
+    file_path = f"{domain}_vuln_urls.json"
     with open(file_path, "w") as f:
         json.dump(results, f, indent=4)
 
-    print(f"\n[+] Results saved to {file_path}")
-
-if __name__ == "__main__":
-    main()
+    print(Fore.LIGHTGREEN_EX + f"\nResults saved to {file_path}")
+    print(Fore.LIGHTBLUE_EX + "\nProcess complete.\n")
