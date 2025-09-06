@@ -86,7 +86,7 @@ def extract_patterns(content, domain=None):
 def run_theharvester(domain):
     try:
         cmd = ["theHarvester", "-d", domain, "-b", "bing,duckduckgo,yahoo,crtsh,threatcrowd,hackertarget,github-code"]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=150)
         output = result.stdout + result.stderr
         emails = re.findall(rf"[a-zA-Z0-9._%+-]+@{re.escape(domain)}", output)
         return set(emails)
@@ -221,4 +221,5 @@ def process(domain: str):
 
     pretty_print(result)
     print(Fore.CYAN + f"[+] Results saved to {filename}")
+
     return result
