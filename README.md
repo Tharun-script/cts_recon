@@ -3,7 +3,7 @@
 -> pip install -r requirements.txt
 -> sudo apt install golang -y
 -> download httpx with go
--> sudo apt install spider foot
+-> sudo apt install spiderfoot
 -> go to /usr/share/spiderfoot/modules
 -> sudo nano sfp_jsonimport.py
 -> paste
