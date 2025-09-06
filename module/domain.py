@@ -24,7 +24,7 @@ def run_crtsh(domain):
     subdomains = set()
     try:
         url = f"https://crt.sh/?q=%25.{domain}&output=json"
-        resp = requests.get(url, timeout=15)
+        resp = requests.get(url, timeout=30)
         if resp.status_code == 200:
             data = resp.json()
             for entry in data:
@@ -121,4 +121,5 @@ def process(domain, safe_domain=None):
 
     print(Style.BRIGHT + Fore.CYAN + "\n[✓] Domain reconnaissance completed.\n")
     return output
+
 
