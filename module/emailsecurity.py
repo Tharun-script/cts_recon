@@ -99,7 +99,7 @@ def process(domain):
     }
 
 # ---------------- CLI Mode ----------------
-if _name_ == "_main_":
+if __name__ == "__main__":
     if len(sys.argv) != 2:
         print(Fore.YELLOW + f"Usage: {sys.argv[0]} <domain>")
         sys.exit(1)
@@ -109,3 +109,4 @@ if _name_ == "_main_":
     results = process(domain)
     print(results)
     print(Style.BRIGHT + Fore.LIGHTCYAN_EX + "=================================\n")
+
