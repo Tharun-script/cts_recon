@@ -1,4 +1,4 @@
-## 🚀 Setup Instructions
+##  Setup Instructions
 
 ### 1️⃣ Create a Python Virtual Environment
 ```bash
