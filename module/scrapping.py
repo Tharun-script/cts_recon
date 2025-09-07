@@ -8,7 +8,6 @@ from serpapi.google_search import GoogleSearch
 from colorama import Fore, Style, init
 
 init(autoreset=True)
-
 # ==============================
 # CONFIG
 # ==============================
@@ -223,5 +222,6 @@ def process(domain: str):
     print(Fore.CYAN + f"[+] Results saved to {filename}")
 
     return result
+
 
 
