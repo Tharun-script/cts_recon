@@ -1,6 +1,6 @@
 ##  Setup Instructions
 
-###Clone the Tool Repository
+### Clone the Tool Repository
 ```bash
 git clone https://github.com/Tharun-script/cts_recon.git
 ```
