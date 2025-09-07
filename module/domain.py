@@ -59,6 +59,8 @@ def probe_alive(subdomains):
     return alive
 
 
+import re
+
 def run_tech_scans(alive_subdomains):
     results = []
     if not alive_subdomains:
@@ -73,7 +75,23 @@ def run_tech_scans(alive_subdomains):
                 stderr=subprocess.PIPE,
                 text=True
             )
-            results = result.stdout.splitlines()
+            lines = result.stdout.splitlines()
+
+            ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')  # regex to remove color codes
+            for line in lines:
+                clean_line = ansi_escape.sub('', line).strip()
+                if "[" in clean_line:
+                    url, techs = clean_line.split("[", 1)
+                    url = url.strip()
+                    techs = techs.strip("] ")
+                    technologies = [t.strip() for t in techs.split(",") if t.strip()]
+                else:
+                    url = clean_line.strip()
+                    technologies = []
+                results.append({
+                    "url": url,
+                    "technologies": technologies
+                })
     except Exception as e:
         print(Fore.RED + f"[!] Error running tech scans: {e}")
     return results
@@ -121,5 +139,6 @@ def process(domain, safe_domain=None):
 
     print(Style.BRIGHT + Fore.CYAN + "\n[✓] Domain reconnaissance completed.\n")
     return output
+
 
 
