@@ -67,7 +67,8 @@ def run_tech_scans(alive_subdomains):
         return results
     try:
         with tempfile.NamedTemporaryFile(mode="w+", delete=True) as f:
-            f.write("\n".join(alive_subdomains))
+            all_targets = [f"https://{domain}"] + alive_subdomains
+            f.write("\n".join(all_targets))
             f.flush()
             result = subprocess.run(
                 ["httpx", "-tech-detect", "-silent", "-list", f.name],
@@ -139,6 +140,7 @@ def process(domain, safe_domain=None):
 
     print(Style.BRIGHT + Fore.CYAN + "\n[✓] Domain reconnaissance completed.\n")
     return output
+
 
 
 
