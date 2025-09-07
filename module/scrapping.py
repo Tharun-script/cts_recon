@@ -20,7 +20,7 @@ token_index = 0
 API_KEY = "882df33509cf14b58f1c79fdfda125f75b67795d7a49fabdd9dfcda4a32ac203"
 
 EMAIL_REGEX = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-PHONE_REGEX = r"\+91\d{10}"   # strict Indian mobile format
+PHONE_REGEX = r"\+91[-\s]?\d{10}"   # strict Indian mobile format
 
 # ==============================
 # GitHub Helpers
@@ -46,7 +46,7 @@ BASE_PATTERNS = {
     "Google API Key": r"AIza[0-9A-Za-z\-_]{35}",
     "Slack Token": r"xox[baprs]-[0-9A-Za-z\-]{10,48}",
     "Private Key": r"-----BEGIN (?:RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY-----",
-    "Username": r"(?:username|user|uname|usr)[\'\"\s:=]{0,6}([a-zA-Z][a-zA-Z0-9_]{5,14})"
+    "Username": r"(?:username|user|uname|usr)[\'\"\s:=]{0,6}([a-zA-Z][a-zA-Z0-9_]{5,14})",
     "Password": r"(?i)(?:password|passwd|pwd)[\'\"\s:=]{0,6}([A-Za-z][A-Za-z0-9_@#$%^&*]{5,14})"
 }
 
@@ -223,4 +223,5 @@ def process(domain: str):
     print(Fore.CYAN + f"[+] Results saved to {filename}")
 
     return result
+
 
