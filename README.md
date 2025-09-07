@@ -20,6 +20,21 @@ sudo apt install golang -y
 ```bash
 go install github.com/projectdiscovery/httpx/cmd/httpx@latest
 ```
+###  Install gau
+```bash
+go install github.com/lc/gau/v2/cmd/gau@latest
+```
+### Install GF 
+```bash
+go install github.com/tomnomnom/gf@latest
+```
+### Download and configure the Gf-Patterns
+``` bash
+git clone https://github.com/1ndianl33t/Gf-Patterns
+mkdir -p ~/.gf
+cp ~Gf-Patterns/*.json ~/.gf
+ls ~/.gf
+```
 ### 6️⃣ Install SpiderFoot
 ```bash
 sudo apt install spiderfoot
