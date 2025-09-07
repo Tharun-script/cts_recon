@@ -138,14 +138,11 @@ class sfp_jsonimport(SpiderFootPlugin):
             self.sf.info(f"Imported technology: {tech}")
 
         self.sf.info("✅ JSON Import completed successfully.")
-    ```
+```
 
 
 
 ### 7️⃣ Run the Pipeline:
 execute the pipeline.py
-```
-python3 pipeline.py
-```
-python3 pipeline.py
-```
+
+```python python3 pipeline.py```
