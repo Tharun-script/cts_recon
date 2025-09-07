@@ -1,5 +1,9 @@
 ##  Setup Instructions
 
+###Clone the Tool Repository
+```bash
+git clone https://github.com/Tharun-script/cts_recon.git
+```
 ### 1️⃣ Create a Python Virtual Environment
 ```bash
 python3 -m venv venv
