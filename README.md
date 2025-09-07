@@ -149,4 +149,6 @@ class sfp_jsonimport(SpiderFootPlugin):
 ### 7️⃣ Run the Pipeline:
 execute the pipeline.py
 
-```python python3 pipeline.py```
+```python 
+python3 pipeline.py
+```
