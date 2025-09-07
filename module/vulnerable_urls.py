@@ -20,7 +20,7 @@ def run_gau(domain):
     print(Fore.LIGHTBLUE_EX + f"\n[*] Running gau for {domain} ...")
     try:
         result = subprocess.run(
-            ["gau", "-s", "commoncrawl,otx,urlscan", "--subs", domain],
+            ["gau", "-s", "wayback", "--subs", domain],
             capture_output=True,
             text=True,
             check=True
