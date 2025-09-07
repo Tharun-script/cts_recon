@@ -82,7 +82,7 @@ class sfp_jsonimport(SpiderFootPlugin):
             return
 
         # ✅ fixed path (no backslashes)
-        json_path = f"/home/kali/cts_recon/{target}_spf.json"
+        json_path = f"/home/<linux_username>/cts_recon/{target}_spf.json"
 
         if not os.path.isfile(json_path):
             self.sf.error(f"JSON file not found: {json_path}")
