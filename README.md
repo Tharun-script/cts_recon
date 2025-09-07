@@ -1,13 +1,40 @@
--> create virtual environment python3 -m venv venv
--> activate it source venv/bin/activate
--> pip install -r requirements.txt
--> sudo apt install golang -y
--> download httpx with go
--> sudo apt install spiderfoot
--> go to /usr/share/spiderfoot/modules
--> sudo nano sfp_jsonimport.py
--> paste
+## 🚀 Setup Instructions
+
+### 1️⃣ Create a Python Virtual Environment
+```bash
+python3 -m venv venv
+source venv/bin/activate
 ```
+### 2️⃣Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+### 3️⃣ Install Golang
+```bash
+sudo apt install golang -y
+```
+### 4️⃣ Install HTTPX
+```bash
+go install github.com/projectdiscovery/httpx/cmd/httpx@latest
+```
+### 5️⃣ Install SpiderFoot
+```bash
+sudo apt install spiderfoot
+```
+### 6️⃣ Add Custom JSON Importer Module
+
+1. Navigate to SpiderFoot modules directory:
+    ```bash
+    cd /usr/share/spiderfoot/modules
+    ```
+
+2. Create and edit the custom module file:
+    ```bash
+    sudo nano sfp_jsonimport.py
+    ```
+
+3. Paste the following code into `sfp_jsonimport.py`:
+    ```python
 import os
 import json
 from spiderfoot import SpiderFootEvent, SpiderFootPlugin
@@ -110,10 +137,10 @@ class sfp_jsonimport(SpiderFootPlugin):
             self.sf.info(f"Imported technology: {tech}")
 
         self.sf.info("✅ JSON Import completed successfully.")
+    ```
+
+### 7️⃣Run the Pipeline:
+execute the pipeline.py
+```bash
+python pipeline.py
 ```
--> copy the path of the project and add /{target}_lite.json
-example json_path = f"/home/kali/cts_recon/{target}_spf.json"
-
-->run the file python pipeline.py
-
-enjoy
