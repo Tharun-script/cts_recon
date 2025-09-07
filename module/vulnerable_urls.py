@@ -20,13 +20,13 @@ def run_gau(domain):
     print(Fore.LIGHTBLUE_EX + f"\n[*] Running gau for {domain} ...")
     try:
         result = subprocess.run(
-            ["gau", "--subs", domain],
+            ["gau", "-s", "commoncrawl,otx,urlscan", "--subs", domain],
             capture_output=True,
             text=True,
             check=True
         )
         urls = list(set(result.stdout.splitlines()))
-        print(Fore.LIGHTGREEN_EX + f"[+] Found {len(urls)} URLs from gau")
+        print(Fore.LIGHTGREEN_EX + f"[+] Found {len(urls)} URLs from gau (sources: commoncrawl, otx, urlscan)")
         return urls
     except subprocess.CalledProcessError as e:
         print(Fore.LIGHTYELLOW_EX + f"[!] gau failed: {e}")
