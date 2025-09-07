@@ -7,7 +7,7 @@ source venv/bin/activate
 ```
 ### 2️⃣Install Dependencies
 ```bash
-pip install -r requirements.txt
+pip install -r requirement.txt
 ```
 ### 3️⃣ Install Golang
 ```bash
