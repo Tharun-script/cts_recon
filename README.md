@@ -1,31 +1,31 @@
 ##  Setup Instructions
 
-### Clone the Tool Repository
+### 1️⃣ Clone the Tool Repository
 ```bash
 git clone https://github.com/Tharun-script/cts_recon.git
 ```
-### 1️⃣ Create a Python Virtual Environment
+### 2️⃣Create a Python Virtual Environment
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
-### 2️⃣Install Dependencies
+### 3️⃣Install Dependencies
 ```bash
 pip install -r requirement.txt
 ```
-### 3️⃣ Install Golang
+### 4️⃣ Install Golang
 ```bash
 sudo apt install golang -y
 ```
-### 4️⃣ Install HTTPX
+### 5️⃣ Install HTTPX
 ```bash
 go install github.com/projectdiscovery/httpx/cmd/httpx@latest
 ```
-### 5️⃣ Install SpiderFoot
+### 6️⃣ Install SpiderFoot
 ```bash
 sudo apt install spiderfoot
 ```
-### 6️⃣ Add Custom JSON Importer Module
+### 7️⃣ Add Custom JSON Importer Module
 
 1. Navigate to SpiderFoot modules directory:
     ```bash
@@ -146,7 +146,7 @@ class sfp_jsonimport(SpiderFootPlugin):
 
 
 
-### 7️⃣ Run the Pipeline:
+### 8️⃣ Run the Pipeline:
 execute the pipeline.py
 
 ```python 
