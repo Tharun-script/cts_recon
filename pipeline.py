@@ -5,6 +5,7 @@ import importlib
 import os
 import sys
 import json
+import shutil
 from datetime import datetime, timezone
 from colorama import Fore, Style, init
 
@@ -13,6 +14,15 @@ init(autoreset=True)
 
 # -------- Global scan collector --------
 scan_data = {}
+
+# -------- Paths --------
+PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
+PIPELINE_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "backend", "output")   # local pipeline output
+FLASK_DIR = os.path.join(PROJECT_ROOT, "recon_flask")
+FLASK_OUTPUT_DIR = os.path.join(FLASK_DIR, "backend", "output")  # flask output
+
+os.makedirs(PIPELINE_OUTPUT_DIR, exist_ok=True)
+os.makedirs(FLASK_OUTPUT_DIR, exist_ok=True)
 
 # -------- CLI Helpers --------
 def status(msg):
@@ -58,30 +68,35 @@ def save_scan_file(domain, scan_type):
     safe_domain = domain.replace("/", "_").replace("\\", "_")
     filename = f"{safe_domain}_lite.json" if scan_type == "lite" else f"{safe_domain}_deep.json"
 
+    # Add metadata
     scan_data["target"] = domain
     scan_data["scan_type"] = scan_type
     scan_data["timestamp"] = datetime.now(timezone.utc).isoformat()
 
     try:
-        with open(filename, "w") as f:
+        # --- Save in pipeline output ---
+        pipeline_path = os.path.join(PIPELINE_OUTPUT_DIR, filename)
+        with open(pipeline_path, "w", encoding="utf-8") as f:
             json.dump(scan_data, f, indent=4)
-        success(f"Scan data saved → {filename}")
+        success(f"Pipeline scan data saved → {pipeline_path}")
+
+        # --- Copy to Flask output ---
+        flask_path = os.path.join(FLASK_OUTPUT_DIR, filename)
+        shutil.copy2(pipeline_path, flask_path)
+        success(f"Scan data copied → {flask_path}")
     except Exception as e:
         error(f"Failed to save scan file: {e}")
         return None
 
-    # Run report only for lite scans
+    # Run report + SpiderFoot only for lite scans
     if scan_type == "lite":
         try:
             status(f"Generating SPF report for {domain}...")
-            subprocess.run([sys.executable, "report.py", filename], check=True)
+            subprocess.run([sys.executable, "report.py", pipeline_path], check=True)
 
             # ---------- AUTO SPIDERFOOT ----------
             status(f"Launching SpiderFoot for {domain}...")
-
-            # Export env var so sfp_jsonimport can read it
             os.environ["SPF_TARGET"] = domain  
-
             spider_cmd = (
                 "spiderfoot -l 127.0.0.1:5001 & "
                 "sleep 5 && "
@@ -92,7 +107,16 @@ def save_scan_file(domain, scan_type):
         except Exception as e:
             error(f"SpiderFoot failed: {e}")
 
-    return filename
+    # ---------- LAUNCH FLASK APP ----------
+    try:
+        status("Launching Flask app...")
+        flask_app_path = os.path.join(PROJECT_ROOT, "recon_flask", "app.py")
+        subprocess.run([sys.executable, flask_app_path])
+    except Exception as e:
+        error(f"Failed to launch Flask app: {e}")
+
+    return pipeline_path
+
 
 # -------- Dynamic Module Loader --------
 def route_to_modules(domain, modules_dir):
@@ -119,8 +143,19 @@ def route_to_modules(domain, modules_dir):
             except Exception as e:
                 error(f"{module_basename} failed: {e}")
 
+# -------- Launch Flask App --------
+def launch_flask():
+    try:
+        status("Launching Flask app (app.py)...")
+        subprocess.run([sys.executable, "app.py"], cwd=FLASK_DIR)
+    except Exception as e:
+        error(f"Failed to start Flask app: {e}")
+
 # -------- Main Pipeline --------
 def pipeline(input_string, scan_type="deep"):
+    global scan_data
+    scan_data = {}  # reset per run
+
     input_type = classify_input(input_string)
     status(f"Input classified as: {input_type}")
 
@@ -136,14 +171,33 @@ def pipeline(input_string, scan_type="deep"):
     print("Scan Type:", Fore.LIGHTYELLOW_EX + scan_type.upper() + Style.RESET_ALL)
     print("-" * 50)
 
-    # Choose modules directory
-    modules_dir = os.path.join(os.path.dirname(__file__), "litemodules" if scan_type == "lite" else "modules")
-
-    # Run all modules
+    # --- Run modules ---
+    modules_dir = os.path.join(PROJECT_ROOT, "litemodules" if scan_type == "lite" else "modules")
     route_to_modules(domain, modules_dir)
 
-    # Save scan file
-    save_scan_file(domain, scan_type)
+    # --- Save results ---
+    filepath = save_scan_file(domain, scan_type)
+
+    if scan_type == "lite":
+        # Run SpiderFoot for Lite scan
+        try:
+            status(f"Launching SpiderFoot for {domain}...")
+            os.environ["SPF_TARGET"] = domain  
+
+            spider_cmd = (
+                "spiderfoot -l 127.0.0.1:5001 & "
+                "sleep 5 && "
+                f"spiderfoot -s {domain} -m sfp_jsonimport"
+            )
+            subprocess.run(spider_cmd, shell=True, check=True)
+            success(f"SpiderFoot JSON import scan triggered for {domain}")
+        except Exception as e:
+            error(f"SpiderFoot failed: {e}")
+
+    # Always launch Flask app at the end
+    launch_flask()
+
+    return filepath
 
 # -------- Entry Point --------
 if __name__ == "__main__":
