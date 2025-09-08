@@ -1,0 +1,39 @@
+{
+    "emailscrap": {
+        "domain": "rmkcet.ac.in",
+        "emails": []
+    },
+    "ipscan": {
+        "timestamp": "2025-09-08T19:02:04.999954",
+        "domain": "rmkcet.ac.in",
+        "dns": [
+            "208.115.225.178"
+        ],
+        "whois": [
+            {
+                "ip": "208.115.225.178",
+                "whois": [
+                    "NetRange:       208.115.192.0 - 208.115.255.255",
+                    "CIDR:           208.115.192.0/18",
+                    "NetRange:       208.115.225.176 - 208.115.225.179",
+                    "CIDR:           208.115.225.176/30"
+                ]
+            }
+        ]
+    },
+    "shodanlite": {
+        "shodan_results": []
+    },
+    "subdomain": {
+        "alive": [
+            "https://nextgenfaculty.rmkcet.ac.in",
+            "http://webmail.rmkcet.ac.in",
+            "http://mail.rmkcet.ac.in",
+            "https://www.rmkcet.ac.in",
+            "https://demo1.rmkcet.ac.in"
+        ]
+    },
+    "target": "rmkcet.ac.in",
+    "scan_type": "lite",
+    "timestamp": "2025-09-08T13:32:43.520003+00:00"
+}
