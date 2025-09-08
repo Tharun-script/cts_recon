@@ -12,7 +12,7 @@ import json
 
 init(autoreset=True)
 
-API_KEY = "2b19c67a0c195af60bec0829621249eb402eb18bc56464d6b641c780ef01af2c"
+API_KEY = "4ade24e084b18d06609f8143b36ab8f619284b56b9b06764d425a8690a5954d7"
 
 # -------------------
 # DNS + WHOIS Helpers
@@ -179,4 +179,5 @@ def process(domain):
 if __name__ == "__main__":
     target_domain = "evil.com"
     process(target_domain)
+
 
