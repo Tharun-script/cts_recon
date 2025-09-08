@@ -20,26 +20,26 @@ sudo apt install golang -y
 ```bash
 go install github.com/projectdiscovery/httpx/cmd/httpx@latest
 ```
-###  Install gau
+### 6️⃣Install gau
 ```bash
 go install github.com/lc/gau/v2/cmd/gau@latest
 ```
-### Install GF 
+### 7️⃣Install GF 
 ```bash
 go install github.com/tomnomnom/gf@latest
 ```
-### Download and configure the Gf-Patterns
+### 8️⃣Download and configure the Gf-Patterns
 ``` bash
 git clone https://github.com/1ndianl33t/Gf-Patterns
 mkdir -p ~/.gf
 cp ~Gf-Patterns/*.json ~/.gf
 ls ~/.gf
 ```
-### 6️⃣ Install SpiderFoot
+### 9️⃣Install SpiderFoot
 ```bash
 sudo apt install spiderfoot
 ```
-### 7️⃣ Add Custom JSON Importer Module
+### 🔟Add Custom JSON Importer Module
 
 1. Navigate to SpiderFoot modules directory:
     ```bash
@@ -160,7 +160,7 @@ class sfp_jsonimport(SpiderFootPlugin):
 
 
 
-### 8️⃣ Run the Pipeline:
+### 1️⃣1️⃣ Run the Pipeline:
 execute the pipeline.py
 
 ```python 
