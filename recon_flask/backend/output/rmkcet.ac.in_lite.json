@@ -1,0 +1,79 @@
+{
+    "emailscrap": {
+        "domain": "rmkcet.ac.in",
+        "emails": [
+            "ads@rmkcet.ac.in",
+            "anusad003@rmkcet.ac.in",
+            "arthidevaraniece@rmkcet.ac.in",
+            "balaads@rmkcet.ac.in",
+            "band21cs016@rmkcet.ac.in",
+            "bharad008@rmkcet.ac.in",
+            "chirad011@rmkcet.ac.in",
+            "dhar21cs031@rmkcet.ac.in",
+            "dinecs182@rmkcet.ac.in",
+            "events.ads@rmkcet.ac.in",
+            "guda21cs049@rmkcet.ac.in",
+            "hari19cs036@rmkcet.ac.in",
+            "hari20cs039@rmkcet.ac.in",
+            "hod_ads@rmkcet.ac.in",
+            "hod_cse@rmkcet.ac.in",
+            "indragcse@rmkcet.ac.in",
+            "jayabharathicse@rmkcet.ac.in",
+            "karr20cs060@rmkcet.ac.in",
+            "kirtcy015@rmkcet.ac.in",
+            "mhar21ad031@rmkcet.ac.in",
+            "moha21ad035@rmkcet.ac.in",
+            "mvp@rmkcet.ac.in",
+            "naraad060@rmkcet.ac.in",
+            "narmcs090@rmkcet.ac.in",
+            "periad061@rmkcet.ac.in",
+            "pran18me063@rmkcet.ac.in",
+            "principal@rmkcet.ac.in",
+            "pritcy026@rmkcet.ac.in",
+            "priycs16@rmkcet.ac.in",
+            "ranjcs119@rmkcet.ac.in",
+            "shar21ec136@rmkcet.ac.in",
+            "shiv17cs087@rmkcet.ac.in",
+            "srid20ad047@rmkcet.ac.in",
+            "syed21ad067@rmkcet.ac.in",
+            "thar21ad069@rmkcet.ac.in",
+            "vara21cs168@rmkcet.ac.in",
+            "vasacs188@rmkcet.ac.in",
+            "vigncs150@rmkcet.ac.in"
+        ]
+    },
+    "ipscan": {
+        "timestamp": "2025-09-09T09:19:24.602901",
+        "domain": "rmkcet.ac.in",
+        "dns": [
+            "208.115.225.178"
+        ],
+        "whois": [
+            {
+                "ip": "208.115.225.178",
+                "whois": [
+                    "NetRange:       208.115.192.0 - 208.115.255.255",
+                    "CIDR:           208.115.192.0/18",
+                    "NetRange:       208.115.225.176 - 208.115.225.179",
+                    "CIDR:           208.115.225.176/30"
+                ]
+            }
+        ]
+    },
+    "shodanlite": {
+        "shodan_results": []
+    },
+    "subdomain": {
+        "alive": [
+            "https://opac.rmkcet.ac.in",
+            "https://nextgenfaculty.rmkcet.ac.in",
+            "http://webmail.rmkcet.ac.in",
+            "http://mail.rmkcet.ac.in",
+            "https://demo1.rmkcet.ac.in",
+            "https://www.rmkcet.ac.in"
+        ]
+    },
+    "target": "rmkcet.ac.in",
+    "scan_type": "lite",
+    "timestamp": "2025-09-09T03:49:36.798207+00:00"
+}
