@@ -4,6 +4,7 @@ import subprocess
 from colorama import Fore, init
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import requests
 
 # ----------------------------
 # Init
@@ -41,9 +42,24 @@ def run_nmap(ip):
         return ip, []
 
 
+def fetch_cvss(cve_id):
+    """Fetch CVSS score for a CVE from Shodan CVE DB."""
+    try:
+        url = f"https://cvedb.shodan.io/cve/{cve_id}"
+        resp = requests.get(url, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("cvss", None)
+        else:
+            return None
+    except Exception as e:
+        print(Fore.RED + f"[!] Error fetching CVSS for {cve_id}: {e}")
+        return None
+
+
 def process(domain):
     """
-    Shodan + Nmap integration (pipeline-compatible).
+    Shodan + Nmap integration + CVE → CVSS enrichment.
     Returns dict so pipeline saves into <target>_deep.json.
     """
     try:
@@ -61,12 +77,22 @@ def process(domain):
                     "org": result.get("org", "N/A"),
                     "hostnames": result.get("hostnames", []),
                     "location": result.get("location", {}),
-                    "vulnerabilities": list(result.get("vulns", {}).keys()) if "vulns" in result else [],
+                    "vulnerabilities": [],
                     "ports": []
                 }
 
+            # Collect Shodan-discovered ports
             if shodan_port:
                 entries[ip]["ports"].append(str(shodan_port))
+
+            # Collect and enrich vulnerabilities with CVSS
+            if "vulns" in result:
+                for cve in result["vulns"].keys():
+                    cvss = fetch_cvss(cve)
+                    entries[ip]["vulnerabilities"].append({
+                        "cve": cve,
+                        "cvss": cvss
+                    })
 
         ips = list(entries.keys())
         print(Fore.CYAN + f"[*] Running Nmap scans on {len(ips)} unique IPs in parallel...")
