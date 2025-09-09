@@ -45,7 +45,7 @@ BASE_PATTERNS = {
     "AWS Access ID": r"AKIA[0-9A-Z]{16}",
     "Google API Key": r"AIza[0-9A-Za-z\-_]{35}",
     "Slack Token": r"xox[baprs]-[0-9A-Za-z\-]{10,48}",
-    "Private Key": r"-----BEGIN (?:RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY-----",
+    "Private Key": r"-----BEGIN (?:RSA|DSA|ECC|OPENSSH|PGP) PRIVATE KEY-----",
     "Username": r"(?:username|user|uname|usr)[\'\"\s:=]{0,6}([a-zA-Z][a-zA-Z0-9_]{5,14})",
     "Password": r"(?i)(?:password|passwd|pwd)[\'\"\s:=]{0,6}([A-Za-z][A-Za-z0-9_@#$%^&*]{5,14})"
 }
